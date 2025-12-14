@@ -1,10 +1,54 @@
 <?php
-// 1. டேட்டாபேஸ் இணைப்பு
+session_start();
 include 'db_conn.php';
 
-// 2. ஸ்டூடன்ட் விவரங்களை எடுப்பதற்கான Query (புதிய மாணவர்கள் முதலில் வர DESC)
-$sql = "SELECT * FROM students ORDER BY student_id DESC";
+// 1. லாகின் செக்
+if (!isset($_SESSION['user_id']) && !isset($_SESSION['username'])) {
+    header("Location: login.php");
+    exit();
+}
+
+// 2. ஃபில்டர் லாஜிக் (Filter Logic)
+$where_clauses = [];
+
+// Program Filter
+if (isset($_GET['program']) && $_GET['program'] != 'All') {
+    $prog = mysqli_real_escape_string($conn, $_GET['program']);
+    $where_clauses[] = "class_year LIKE '%$prog%'";
+}
+
+// Year Filter
+if (isset($_GET['year']) && $_GET['year'] != 'All') {
+    $yr = mysqli_real_escape_string($conn, $_GET['year']);
+    $where_clauses[] = "(class_year LIKE '%$yr%' OR class_year LIKE '%Year $yr%')";
+}
+
+// Status Filter
+if (isset($_GET['status']) && $_GET['status'] != 'All') {
+    $sts = mysqli_real_escape_string($conn, $_GET['status']);
+    $where_clauses[] = "status = '$sts'";
+}
+
+// Search Bar
+if (isset($_GET['search']) && !empty($_GET['search'])) {
+    $search = mysqli_real_escape_string($conn, $_GET['search']);
+    $where_clauses[] = "(full_name LIKE '%$search%' OR admission_no LIKE '%$search%' OR phone LIKE '%$search%')";
+}
+
+// Build Query
+$sql = "SELECT * FROM students";
+if (count($where_clauses) > 0) {
+    $sql .= " WHERE " . implode(' AND ', $where_clauses);
+}
+$sql .= " ORDER BY student_id DESC";
+
 $result = mysqli_query($conn, $sql);
+
+// ஃபில்டர் மதிப்புகளை தக்கவைக்க (Keep selected values)
+$selected_prog = isset($_GET['program']) ? $_GET['program'] : 'All';
+$selected_year = isset($_GET['year']) ? $_GET['year'] : 'All';
+$selected_status = isset($_GET['status']) ? $_GET['status'] : 'All';
+$search_val = isset($_GET['search']) ? $_GET['search'] : '';
 ?>
 
 <!DOCTYPE html>
@@ -13,42 +57,81 @@ $result = mysqli_query($conn, $sql);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Student Management | College Office</title>
+    <title>Student Directory | College Office</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="dashboard.css">
 
     <style>
-        /* Table Styles (இந்த பக்கத்திற்கு மட்டும் தேவையான டிசைன்) */
-        .table-container {
+        /* --- FILTERS SECTION --- */
+        .controls-card {
             background: white;
-            border-radius: 12px;
             padding: 20px;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
-            margin-top: 20px;
-        }
-
-        .controls-row {
+            border-radius: 12px;
+            border: 1px solid #E5E7EB;
+            margin-bottom: 25px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.02);
         }
 
-        .filters select {
+        .filters-group {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .filter-select {
             padding: 10px 15px;
             border: 1px solid #E5E7EB;
             border-radius: 8px;
-            margin-right: 10px;
-            color: #4B5563;
+            color: #374151;
+            font-size: 14px;
             outline: none;
+            background-color: #F9FAFB;
+            cursor: pointer;
+            min-width: 140px;
+            transition: 0.2s;
         }
 
-        /* Add Student Button (Orange) */
-        .btn-add-student {
-            background-color: #ED8936;
+        .filter-select:hover {
+            border-color: #D1D5DB;
+        }
+
+        .filter-select:focus {
+            border-color: #2563EB;
+            background: white;
+        }
+
+        .search-box {
+            position: relative;
+        }
+
+        .search-box input {
+            padding: 10px 15px 10px 35px;
+            border: 1px solid #E5E7EB;
+            border-radius: 8px;
+            outline: none;
+            font-size: 14px;
+            width: 250px;
+            background-color: #F9FAFB;
+        }
+
+        .search-box i {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #9CA3AF;
+        }
+
+        /* --- ADD BUTTON --- */
+        .btn-add {
+            background-color: #2563EB;
+            /* Royal Blue */
             color: white;
-            padding: 12px 20px;
+            padding: 10px 20px;
             border-radius: 8px;
             text-decoration: none;
             font-weight: 600;
@@ -56,14 +139,24 @@ $result = mysqli_query($conn, $sql);
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            transition: background 0.2s;
+            transition: 0.2s;
+            box-shadow: 0 2px 5px rgba(37, 99, 235, 0.2);
         }
 
-        .btn-add-student:hover {
-            background-color: #D67625;
+        .btn-add:hover {
+            background-color: #1D4ED8;
+            transform: translateY(-1px);
         }
 
-        /* Table Structure */
+        /* --- TABLE STYLES --- */
+        .table-container {
+            background: white;
+            border-radius: 12px;
+            border: 1px solid #E5E7EB;
+            overflow: hidden;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.03);
+        }
+
         .student-table {
             width: 100%;
             border-collapse: collapse;
@@ -71,82 +164,125 @@ $result = mysqli_query($conn, $sql);
 
         .student-table th {
             text-align: left;
-            padding: 15px;
+            padding: 15px 20px;
             font-size: 12px;
-            font-weight: 600;
-            color: #9CA3AF;
+            font-weight: 700;
+            color: #6B7280;
             text-transform: uppercase;
-            border-bottom: 1px solid #F3F4F6;
+            border-bottom: 1px solid #E5E7EB;
+            background: #F8FAFC;
         }
 
         .student-table td {
-            padding: 15px;
+            padding: 15px 20px;
             border-bottom: 1px solid #F3F4F6;
             vertical-align: middle;
             color: #374151;
             font-size: 14px;
         }
 
-        /* Avatar & Name Styling */
-        .student-info {
+        .student-table tr:hover {
+            background-color: #FAFAFA;
+        }
+
+        /* Student Profile Info */
+        .profile-cell {
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 12px;
         }
 
         .avatar {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, #E0E0E0 0%, #F5F5F5 100%);
+            width: 42px;
+            height: 42px;
+            background: #E0E7FF;
+            /* Light Blue BG */
+            color: #4338CA;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
-            color: #666;
+            font-weight: 700;
             font-size: 14px;
+            overflow: hidden;
+            border: 2px solid white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
         }
 
-        .name-box h4 {
-            font-size: 14px;
+        .avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .st-name {
             font-weight: 600;
             color: #111827;
-            margin-bottom: 2px;
+            display: block;
         }
 
-        .name-box span {
+        .st-id {
             font-size: 12px;
-            color: #9CA3AF;
+            color: #6B7280;
         }
 
         /* Status Badges */
-        .badge-active {
-            background-color: #ECFDF5;
-            color: #10B981;
-            padding: 5px 12px;
+        .badge {
+            padding: 4px 10px;
             border-radius: 20px;
-            font-size: 12px;
-            font-weight: 500;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .badge-active {
+            background: #DCFCE7;
+            color: #166534;
         }
 
         .badge-inactive {
-            background-color: #FEF2F2;
-            color: #EF4444;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 500;
+            background: #FEE2E2;
+            color: #991B1B;
         }
 
-        .action-icon {
-            color: #9CA3AF;
-            cursor: pointer;
-            font-size: 16px;
+        .badge-graduated {
+            background: #E0E7FF;
+            color: #3730A3;
+        }
+
+        /* Actions */
+        .action-btns {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .btn-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6B7280;
             transition: 0.2s;
+            text-decoration: none;
+            background: #F3F4F6;
         }
 
-        .action-icon:hover {
-            color: #ED8936;
+        .btn-view:hover {
+            background: #DBEAFE;
+            color: #2563EB;
+        }
+
+        .btn-edit:hover {
+            background: #FEF3C7;
+            color: #D97706;
+        }
+
+        .btn-delete:hover {
+            background: #FEE2E2;
+            color: #DC2626;
         }
     </style>
 </head>
@@ -155,104 +291,142 @@ $result = mysqli_query($conn, $sql);
 
     <div class="dashboard-container">
 
-        <?php
-        $page = 'students'; // Sidebar-ல் 'Students' டேப் Active ஆக இருக்க இது உதவும்
-        include 'sidebar.php';
-        ?>
+        <?php $page = 'students';
+        include 'sidebar.php'; ?>
 
         <main class="main-content">
 
             <header class="top-header">
                 <h2>Student Management</h2>
-                <div class="header-right">
-                    <div class="search-bar">
-                        <i class="fa-solid fa-magnifying-glass"></i>
-                        <input type="text" placeholder="Search students...">
-                    </div>
-                </div>
             </header>
 
-            <div class="table-container">
+            <form action="" method="GET" id="filterForm">
+                <div class="controls-card">
+                    <div class="filters-group">
 
-                <div class="controls-row">
-                    <div class="filters">
-                        <select>
-                            <option>All Programs</option>
-                            <option>Al-Alim</option>
-                            <option>Hifz</option>
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" name="search" placeholder="Search name, ID or phone..." value="<?php echo $search_val; ?>">
+                        </div>
+
+                        <select name="program" class="filter-select" onchange="document.getElementById('filterForm').submit()">
+                            <option value="All" <?php if ($selected_prog == 'All') echo 'selected'; ?>>All Programs</option>
+                            <option value="Hifz" <?php if ($selected_prog == 'Hifz') echo 'selected'; ?>>Al-Hafiz</option>
+                            <option value="Alim" <?php if ($selected_prog == 'Alim') echo 'selected'; ?>>Al-Alim</option>
                         </select>
-                        <select>
-                            <option>All Years</option>
-                            <option>Year 1</option>
-                            <option>Year 2</option>
+
+                        <select name="year" class="filter-select" onchange="document.getElementById('filterForm').submit()">
+                            <option value="All" <?php if ($selected_year == 'All') echo 'selected'; ?>>All Years</option>
+                            <option value="1" <?php if ($selected_year == '1') echo 'selected'; ?>>Year 1</option>
+                            <option value="2" <?php if ($selected_year == '2') echo 'selected'; ?>>Year 2</option>
+                            <option value="3" <?php if ($selected_year == '3') echo 'selected'; ?>>Year 3</option>
+                            <option value="Final" <?php if ($selected_year == 'Final') echo 'selected'; ?>>Final Year</option>
                         </select>
+
+                        <select name="status" class="filter-select" onchange="document.getElementById('filterForm').submit()">
+                            <option value="All" <?php if ($selected_status == 'All') echo 'selected'; ?>>All Status</option>
+                            <option value="Active" <?php if ($selected_status == 'Active') echo 'selected'; ?>>Active</option>
+                            <option value="Inactive" <?php if ($selected_status == 'Inactive') echo 'selected'; ?>>Inactive</option>
+                            <option value="Graduated" <?php if ($selected_status == 'Graduated') echo 'selected'; ?>>Graduated</option>
+                        </select>
+
                     </div>
 
-                    <a href="add_student.html" class="btn-add-student">
-                        <i class="fa-solid fa-plus"></i> Add Student
+                    <a href="add_student.php" class="btn-add">
+                        <i class="fa-solid fa-plus"></i> Add New Student
                     </a>
                 </div>
+            </form>
 
+            <div class="table-container">
                 <table class="student-table">
                     <thead>
                         <tr>
-                            <th>Student</th>
-                            <th>Program</th>
-                            <th>Date Joined</th>
-                            <th>Status</th>
-                            <th>Actions</th>
+                            <th style="width: 25%;">Student Profile</th>
+                            <th style="width: 15%;">Program</th>
+                            <th style="width: 15%;">Class / Year</th>
+                            <th style="width: 15%;">Contact</th>
+                            <th style="width: 10%;">Status</th>
+                            <th style="width: 20%; text-align:right;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-
                         <?php
-                        // PHP Loop to display data
                         if (mysqli_num_rows($result) > 0) {
                             while ($row = mysqli_fetch_assoc($result)) {
 
-                                // Status கலர் மாற்றம் (Green/Red)
-                                $status_badge = ($row['status'] == 'Active') ? 'badge-active' : 'badge-inactive';
+                                // Photo Logic
+                                $photo_html = "";
+                                if (!empty($row['photo'])) {
+                                    $photo_html = "<img src='uploads/" . $row['photo'] . "'>";
+                                } else {
+                                    $photo_html = substr($row['full_name'], 0, 1);
+                                }
 
-                                // பெயரின் முதல் எழுத்தை Avatar-ல் காட்ட
-                                $initial = substr($row['full_name'], 0, 1);
+                                // Status Logic
+                                $status_badge = "badge-active";
+                                if ($row['status'] == 'Inactive') $status_badge = "badge-inactive";
+                                if ($row['status'] == 'Graduated') $status_badge = "badge-graduated";
+
+                                // Program Display
+                                $prog_display = "Unknown";
+                                if (strpos($row['class_year'], 'Hifz') !== false) $prog_display = "Al-Hafiz";
+                                elseif (strpos($row['class_year'], 'Alim') !== false) $prog_display = "Al-Alim";
 
                                 echo "<tr>";
 
-                                // 1. Name Column
+                                // 1. Profile
                                 echo "<td>
-                                        <div class='student-info'>
-                                            <div class='avatar'>$initial</div>
-                                            <div class='name-box'>
-                                                <h4>" . $row['full_name'] . "</h4>
-                                                <span>" . $row['admission_no'] . "</span>
+                                        <div class='profile-cell'>
+                                            <div class='avatar'>$photo_html</div>
+                                            <div>
+                                                <span class='st-name'>" . $row['full_name'] . "</span>
+                                                <span class='st-id'>" . $row['admission_no'] . "</span>
                                             </div>
                                         </div>
                                       </td>";
 
-                                // 2. Program Column
-                                echo "<td>" . $row['class_year'] . "</td>";
+                                // 2. Program
+                                echo "<td><span style='font-weight:500; color:#4B5563;'>$prog_display</span></td>";
 
-                                // 3. Date Column
-                                echo "<td>" . $row['admission_date'] . "</td>";
+                                // 3. Year
+                                echo "<td><span style='color:#6B7280; background:#F3F4F6; padding:4px 8px; border-radius:6px; font-size:12px;'>" . $row['class_year'] . "</span></td>";
 
-                                // 4. Status Column
-                                echo "<td><span class='" . $status_badge . "'>● " . $row['status'] . "</span></td>";
-
-                                // 5. Action Column
+                                // 4. Contact
                                 echo "<td>
-                                        <i class='fa-regular fa-eye action-icon' title='View Details'></i>
+                                        <div style='font-size:13px; color:#374151;'><i class='fa-solid fa-phone' style='font-size:11px; color:#9CA3AF;'></i> " . $row['phone'] . "</div>
+                                      </td>";
+
+                                // 5. Status
+                                echo "<td><span class='badge $status_badge'>" . $row['status'] . "</span></td>";
+
+                                // 6. Actions
+                                echo "<td>
+                                        <div class='action-btns'>
+                                            <a href='student_view.php?id=" . $row['student_id'] . "' class='btn-icon btn-view' title='View Profile'>
+                                                <i class='fa-regular fa-eye'></i>
+                                            </a>
+                                            <a href='edit_student.php?id=" . $row['student_id'] . "' class='btn-icon btn-edit' title='Edit Details'>
+                                                <i class='fa-regular fa-pen-to-square'></i>
+                                            </a>
+                                            <a href='delete_student.php?id=" . $row['student_id'] . "' class='btn-icon btn-delete' title='Delete' onclick='return confirm(\"Are you sure?\")'>
+                                                <i class='fa-regular fa-trash-can'></i>
+                                            </a>
+                                        </div>
                                       </td>";
 
                                 echo "</tr>";
                             }
                         } else {
-                            echo "<tr><td colspan='5' style='text-align:center; padding:30px; color:#666;'>No students found in database.</td></tr>";
+                            echo "<tr><td colspan='6' style='text-align:center; padding:40px; color:#6B7280;'>No students found matching your filters.</td></tr>";
                         }
                         ?>
-
                     </tbody>
                 </table>
+            </div>
 
+            <div style="margin-top:20px; text-align:right; font-size:13px; color:#6B7280;">
+                Showing <?php echo mysqli_num_rows($result); ?> records
             </div>
 
         </main>

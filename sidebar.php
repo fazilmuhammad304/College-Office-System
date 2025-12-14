@@ -36,16 +36,16 @@
         </a>
 
         <p class="menu-label">Academic</p>
-        <a href="#" class="menu-item <?php if ($page == 'attendance') {
-                                            echo 'active';
-                                        } ?>">
+        <a href="attendance.php" class="menu-item <?php if ($page == 'attendance') {
+                                                        echo 'active';
+                                                    } ?>">
             <i class="fa-solid fa-calendar-check"></i> Attendance
         </a>
 
         <p class="menu-label">Office</p>
-        <a href="#" class="menu-item <?php if ($page == 'documents') {
-                                            echo 'active';
-                                        } ?>">
+        <a href="documents.php" class="menu-item <?php if ($page == 'documents') {
+                                                        echo 'active';
+                                                    } ?>">
             <i class="fa-regular fa-folder-open"></i> Documents
         </a>
     </nav>

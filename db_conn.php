@@ -1,9 +1,9 @@
 <?php
-// InfinityFree Database Connection
-$servername = "sql110.infinityfree.com";             // Host Name
-$username   = "if0_40675578";                        // User Name
-$password   = "Your_vPanel_Password";                // ⚠️ இங்கே உங்கள் vPanel பாஸ்வேர்டை போடவும்!
-$dbname     = "if0_40675578_portal"; // DB Name
+// Localhost Database Connection (XAMPP / WAMP)
+$servername = "localhost";
+$username   = "root";      // XAMPP-ல் Default Username 'root'
+$password   = "";          // XAMPP-ல் Default Password காலி (Empty)
+$dbname     = "faizanul_madeena_portal"; // நீங்கள் phpMyAdmin-ல் உருவாக்கும் டேட்டாபேஸ் பெயர்
 
 // Create connection
 $conn = mysqli_connect($servername, $username, $password, $dbname);
@@ -12,4 +12,3 @@ $conn = mysqli_connect($servername, $username, $password, $dbname);
 if (!$conn) {
     die("Connection failed: " . mysqli_connect_error());
 }
-
