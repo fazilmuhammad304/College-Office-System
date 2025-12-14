@@ -3,7 +3,7 @@
 $servername = "sql110.infinityfree.com";             // Host Name
 $username   = "if0_40675578";                        // User Name
 $password   = "Your_vPanel_Password";                // ⚠️ இங்கே உங்கள் vPanel பாஸ்வேர்டை போடவும்!
-$dbname     = "if0_40675578_faizanul_madeena_portal"; // DB Name
+$dbname     = "if0_40675578_portal"; // DB Name
 
 // Create connection
 $conn = mysqli_connect($servername, $username, $password, $dbname);
@@ -12,3 +12,4 @@ $conn = mysqli_connect($servername, $username, $password, $dbname);
 if (!$conn) {
     die("Connection failed: " . mysqli_connect_error());
 }
+
