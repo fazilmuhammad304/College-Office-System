@@ -26,14 +26,14 @@ if (isset($_POST['save_attendance'])) {
             }
             mysqli_query($conn, $sql);
         }
-        $message = "<div class='alert success'><i class='fa-solid fa-circle-check'></i> Attendance Saved Successfully for $date</div>";
+        $message = "<div class='alert success'><i class='fa-solid fa-lock'></i> Verified & Saved Successfully for <b>" . date('d M Y', strtotime($date)) . "</b></div>";
     } else {
         $message = "<div class='alert error'>No students selected!</div>";
     }
 }
 
 // 3. ஃபில்டர் லாஜிக்
-$filter_class = isset($_GET['class_year']) ? $_GET['class_year'] : '';
+$filter_class = isset($_GET['class_year']) ? $_GET['class_year'] : 'All';
 $selected_date = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
 
 $query = "SELECT * FROM students WHERE status='Active'";
@@ -42,6 +42,10 @@ if ($filter_class != '' && $filter_class != 'All') {
 }
 $query .= " ORDER BY admission_no ASC";
 $students = mysqli_query($conn, $query);
+
+$check_date_sql = "SELECT * FROM attendance WHERE date = '$selected_date' LIMIT 1";
+$is_existing = (mysqli_num_rows(mysqli_query($conn, $check_date_sql)) > 0);
+$btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
 ?>
 
 <!DOCTYPE html>
@@ -56,8 +60,7 @@ $students = mysqli_query($conn, $query);
     <link rel="stylesheet" href="dashboard.css">
 
     <style>
-        /* --- PROFESSIONAL DROPDOWN STYLE --- */
-
+        /* --- STYLES --- */
         .filters-card {
             background: white;
             padding: 25px 30px;
@@ -82,10 +85,8 @@ $students = mysqli_query($conn, $query);
             font-weight: 700;
             color: #374151;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
         }
 
-        /* ✨ Magic Happens Here: Custom Dropdown CSS */
         .filter-input {
             width: 100%;
             padding: 12px 20px;
@@ -96,36 +97,8 @@ $students = mysqli_query($conn, $query);
             font-size: 14px;
             font-weight: 500;
             background-color: #F9FAFB;
-            cursor: pointer;
-
-            /* Remove Default Arrow */
-            appearance: none;
-            -webkit-appearance: none;
-            -moz-appearance: none;
-
-            /* Add Custom Orange Arrow Icon */
-            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ED8936' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-            background-repeat: no-repeat;
-            background-position: right 15px center;
-            background-size: 16px;
-            transition: all 0.2s ease-in-out;
         }
 
-        /* Hover & Focus Effects */
-        .filter-input:hover {
-            background-color: white;
-            border-color: #D1D5DB;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.02);
-        }
-
-        .filter-input:focus {
-            background-color: white;
-            border-color: #ED8936;
-            /* Brand Orange */
-            box-shadow: 0 0 0 4px rgba(237, 137, 54, 0.1);
-        }
-
-        /* Button Styling */
         .btn-load {
             background-color: #4C1D95;
             color: white;
@@ -135,21 +108,34 @@ $students = mysqli_query($conn, $query);
             cursor: pointer;
             font-weight: 600;
             height: 46px;
-            /* Match input height */
-            font-size: 14px;
             display: flex;
             align-items: center;
             gap: 8px;
+        }
+
+        .quick-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .btn-quick {
+            padding: 8px 15px;
+            border-radius: 6px;
+            border: 1px solid #E5E7EB;
+            background: white;
+            color: #4B5563;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
             transition: 0.2s;
-            box-shadow: 0 4px 10px rgba(76, 29, 149, 0.2);
         }
 
-        .btn-load:hover {
-            background-color: #371270;
-            transform: translateY(-2px);
+        .btn-quick:hover {
+            background: #F3F4F6;
+            color: #111827;
         }
 
-        /* --- TABLE & OTHER STYLES (PC Optimized) --- */
         .attendance-card {
             background: white;
             border-radius: 12px;
@@ -165,7 +151,7 @@ $students = mysqli_query($conn, $query);
         }
 
         .att-table th {
-            padding: 18px 25px;
+            padding: 15px 25px;
             background: #F8FAFC;
             color: #64748B;
             font-size: 12px;
@@ -176,7 +162,7 @@ $students = mysqli_query($conn, $query);
         }
 
         .att-table td {
-            padding: 15px 25px;
+            padding: 12px 25px;
             border-bottom: 1px solid #F1F5F9;
             vertical-align: middle;
         }
@@ -188,8 +174,8 @@ $students = mysqli_query($conn, $query);
         }
 
         .st-avatar {
-            width: 45px;
-            height: 45px;
+            width: 40px;
+            height: 40px;
             background: #F3F4F6;
             border-radius: 10px;
             display: flex;
@@ -199,10 +185,9 @@ $students = mysqli_query($conn, $query);
             color: #6B7280;
         }
 
-        /* Status Toggles */
         .status-options {
             display: flex;
-            gap: 10px;
+            gap: 8px;
         }
 
         .status-radio {
@@ -210,14 +195,14 @@ $students = mysqli_query($conn, $query);
         }
 
         .status-label {
-            width: 40px;
-            height: 40px;
+            width: 35px;
+            height: 35px;
             border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 700;
-            font-size: 14px;
+            font-size: 13px;
             cursor: pointer;
             border: 1px solid #E2E8F0;
             color: #94A3B8;
@@ -243,20 +228,81 @@ $students = mysqli_query($conn, $query);
             border-color: #EA580C;
         }
 
-        /* Sticky Footer */
+        .status-radio[value="Holiday"]:checked+.status-label {
+            background: #E0E7FF;
+            color: #4338CA;
+            border-color: #4F46E5;
+        }
+
         .save-bar {
             position: fixed;
             bottom: 0;
             right: 0;
             left: 260px;
             background: white;
-            padding: 20px 40px;
+            padding: 15px 40px;
             box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-top: 1px solid #E2E8F0;
             z-index: 50;
+        }
+
+        /* 🔥 SECURITY MODAL CSS 🔥 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-box {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            width: 350px;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+        }
+
+        .pass-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #E5E7EB;
+            border-radius: 8px;
+            font-size: 18px;
+            text-align: center;
+            margin: 20px 0;
+            outline: none;
+            letter-spacing: 5px;
+        }
+
+        .pass-input:focus {
+            border-color: #ED8936;
+        }
+
+        .btn-confirm {
+            background: #ED8936;
+            color: white;
+            border: none;
+            padding: 12px;
+            width: 100%;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 15px;
+        }
+
+        .btn-confirm:hover {
+            background: #C05621;
         }
 
         .btn-save {
@@ -270,13 +316,10 @@ $students = mysqli_query($conn, $query);
             display: flex;
             align-items: center;
             gap: 10px;
-            box-shadow: 0 4px 12px rgba(237, 137, 54, 0.25);
-            transition: 0.2s;
         }
 
         .btn-save:hover {
             background-color: #D67625;
-            transform: translateY(-2px);
         }
 
         .alert {
@@ -314,7 +357,7 @@ $students = mysqli_query($conn, $query);
                 <h2>Attendance Registry</h2>
                 <div class="header-right">
                     <div style="background:white; padding:8px 15px; border-radius:8px; border:1px solid #E5E7EB; font-weight:600; color:#374151;">
-                        <i class="fa-regular fa-calendar"></i> <?php echo date('F d, Y'); ?>
+                        Selected: <span style="color:#2563EB;"><?php echo date('d M, Y', strtotime($selected_date)); ?></span>
                     </div>
                 </div>
             </header>
@@ -342,21 +385,28 @@ $students = mysqli_query($conn, $query);
                 </div>
             </form>
 
-            <form method="POST" action="">
+            <form method="POST" action="" id="attForm">
                 <input type="hidden" name="attendance_date" value="<?php echo $selected_date; ?>">
 
-                <div class="attendance-card">
-                    <table class="att-table">
-                        <thead>
-                            <tr>
-                                <th style="width: 40%;">Student Name</th>
-                                <th style="width: 30%;">Program & Year</th>
-                                <th style="width: 30%;">Attendance Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php
-                            if (mysqli_num_rows($students) > 0) {
+                <?php if (mysqli_num_rows($students) > 0) { ?>
+
+                    <div class="quick-actions">
+                        <button type="button" class="btn-quick" onclick="markAll('Present')"><i class="fa-solid fa-check"></i> Mark All Present</button>
+                        <button type="button" class="btn-quick" onclick="markAll('Holiday')"><i class="fa-solid fa-umbrella-beach"></i> Mark All Holiday</button>
+                        <button type="button" class="btn-quick" onclick="markAll('Absent')"><i class="fa-solid fa-xmark"></i> Mark All Absent</button>
+                    </div>
+
+                    <div class="attendance-card">
+                        <table class="att-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40%;">Student Name</th>
+                                    <th style="width: 25%;">Class</th>
+                                    <th style="width: 35%;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php
                                 while ($row = mysqli_fetch_assoc($students)) {
                                     $sid = $row['student_id'];
                                     $initial = substr($row['full_name'], 0, 1);
@@ -364,54 +414,117 @@ $students = mysqli_query($conn, $query);
                                     $res = mysqli_query($conn, $status_sql);
                                     $existing = mysqli_fetch_assoc($res);
                                     $status = $existing ? $existing['status'] : 'Present';
-                            ?>
+                                ?>
                                     <tr>
                                         <td>
                                             <div class="student-profile">
                                                 <div class="st-avatar"><?php echo $initial; ?></div>
                                                 <div class="st-info">
-                                                    <h4><?php echo $row['full_name']; ?></h4>
-                                                    <span><?php echo $row['admission_no']; ?></span>
+                                                    <h4 style="margin:0; font-size:14px;"><?php echo $row['full_name']; ?></h4>
+                                                    <span style="font-size:12px; color:#9CA3AF;"><?php echo $row['admission_no']; ?></span>
                                                 </div>
                                             </div>
                                         </td>
                                         <td>
-                                            <span style="font-weight:600; color:#475569; background:#F1F5F9; padding:5px 10px; border-radius:6px; font-size:13px;">
+                                            <span style="font-weight:600; color:#475569; background:#F1F5F9; padding:5px 10px; border-radius:6px; font-size:12px;">
                                                 <?php echo $row['class_year']; ?>
                                             </span>
                                         </td>
                                         <td>
                                             <div class="status-options">
-                                                <label><input type="radio" name="status[<?php echo $sid; ?>]" value="Present" class="status-radio" <?php if ($status == 'Present') echo 'checked'; ?>>
+                                                <label title="Present"><input type="radio" name="status[<?php echo $sid; ?>]" value="Present" class="status-radio" <?php if ($status == 'Present') echo 'checked'; ?>>
                                                     <div class="status-label">P</div>
                                                 </label>
-                                                <label><input type="radio" name="status[<?php echo $sid; ?>]" value="Absent" class="status-radio" <?php if ($status == 'Absent') echo 'checked'; ?>>
+                                                <label title="Absent"><input type="radio" name="status[<?php echo $sid; ?>]" value="Absent" class="status-radio" <?php if ($status == 'Absent') echo 'checked'; ?>>
                                                     <div class="status-label">A</div>
                                                 </label>
-                                                <label><input type="radio" name="status[<?php echo $sid; ?>]" value="Late" class="status-radio" <?php if ($status == 'Late') echo 'checked'; ?>>
+                                                <label title="Late"><input type="radio" name="status[<?php echo $sid; ?>]" value="Late" class="status-radio" <?php if ($status == 'Late') echo 'checked'; ?>>
                                                     <div class="status-label">L</div>
+                                                </label>
+                                                <label title="Holiday"><input type="radio" name="status[<?php echo $sid; ?>]" value="Holiday" class="status-radio" <?php if ($status == 'Holiday') echo 'checked'; ?>>
+                                                    <div class="status-label"><i class="fa-solid fa-umbrella-beach"></i></div>
                                                 </label>
                                             </div>
                                         </td>
                                     </tr>
-                            <?php
-                                }
-                            } else {
-                                echo "<tr><td colspan='3' style='text-align:center; padding:40px; color:#64748B;'>No students found.</td></tr>";
-                            }
-                            ?>
-                        </tbody>
-                    </table>
-                </div>
+                                <?php } ?>
+                            </tbody>
+                        </table>
+                    </div>
 
-                <div class="save-bar">
-                    <div style="font-size:15px; color:#475569;">Attendance: <b style="color:#1E293B;"><?php echo date('d M, Y', strtotime($selected_date)); ?></b></div>
-                    <button type="submit" name="save_attendance" class="btn-save"><i class="fa-solid fa-check"></i> Save Attendance</button>
-                </div>
+                    <div class="save-bar">
+                        <div style="font-size:14px; color:#475569;">
+                            Editing: <b style="color:#1E293B;"><?php echo date('d M, Y', strtotime($selected_date)); ?></b>
+                        </div>
+                        <button type="button" onclick="openSecurityModal()" class="btn-save">
+                            <i class="fa-solid fa-lock"></i> <?php echo $btn_text; ?>
+                        </button>
+                        <button type="submit" name="save_attendance" id="realSubmitBtn" style="display:none;"></button>
+                    </div>
+
+                <?php } else { ?>
+                    <div style="text-align:center; padding:50px; background:white; border-radius:12px; border:1px dashed #E5E7EB; color:#6B7280;">
+                        No active students found.
+                    </div>
+                <?php } ?>
             </form>
 
         </main>
     </div>
+
+    <div id="securityModal" class="modal-overlay">
+        <div class="modal-box">
+            <i class="fa-solid fa-shield-halved" style="font-size:40px; color:#ED8936; margin-bottom:15px;"></i>
+            <h3 style="color:#1F2937; margin-bottom:5px;">Security Check</h3>
+            <p style="color:#6B7280; font-size:13px; margin-bottom:20px;">Enter Admin PIN to update records</p>
+
+            <input type="password" id="adminPin" class="pass-input" placeholder="****" maxlength="4">
+
+            <div style="display:flex; gap:10px;">
+                <button onclick="closeModal()" style="background:#F3F4F6; color:#4B5563; border:none; padding:10px; flex:1; border-radius:8px; cursor:pointer;">Cancel</button>
+                <button onclick="verifyPin()" class="btn-confirm">Verify & Save</button>
+            </div>
+            <p id="errorMsg" style="color:red; font-size:12px; margin-top:10px; display:none;">Incorrect PIN!</p>
+        </div>
+    </div>
+
+    <script>
+        function markAll(statusValue) {
+            const radios = document.querySelectorAll(`input[type="radio"][value="${statusValue}"]`);
+            radios.forEach(radio => {
+                radio.checked = true;
+            });
+        }
+
+        // --- SECURITY MODAL LOGIC ---
+        const modal = document.getElementById('securityModal');
+        const pinInput = document.getElementById('adminPin');
+        const errorMsg = document.getElementById('errorMsg');
+
+        function openSecurityModal() {
+            modal.style.display = 'flex';
+            pinInput.value = '';
+            pinInput.focus();
+            errorMsg.style.display = 'none';
+        }
+
+        function closeModal() {
+            modal.style.display = 'none';
+        }
+
+        function verifyPin() {
+            // 🔥 CHANGE PIN HERE (தற்போதைய பின்: 1234) 🔥
+            const correctPin = "1234";
+
+            if (pinInput.value === correctPin) {
+                document.getElementById('realSubmitBtn').click(); // Submit Form
+            } else {
+                errorMsg.style.display = 'block';
+                pinInput.style.borderColor = 'red';
+            }
+        }
+    </script>
+
 </body>
 
 </html>

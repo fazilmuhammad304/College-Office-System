@@ -2,99 +2,134 @@
 session_start();
 include 'db_conn.php';
 
-// 1. லாகின் செக்
-if (!isset($_SESSION['user_id']) && !isset($_SESSION['username'])) {
+// 1. LOGIN & ROLE CHECK
+if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
 }
 
+$user_role = isset($_SESSION['role']) ? $_SESSION['role'] : 'Staff';
+$is_admin = ($user_role === 'Super Admin');
+
 $message = "";
 
-// --- ACTION 1: UPLOAD FILE ---
+// --- ACTION 1: CREATE CATEGORY ---
+if (isset($_POST['create_category'])) {
+    $cat_name = mysqli_real_escape_string($conn, $_POST['cat_name']);
+    $is_private = isset($_POST['is_private']) ? 1 : 0;
+
+    if ($is_private == 1 && !$is_admin) {
+        $message = "<div class='alert error'>Only Admins can create private folders!</div>";
+    } else {
+        $check = mysqli_query($conn, "SELECT * FROM categories WHERE name = '$cat_name'");
+        if (mysqli_num_rows($check) > 0) {
+            $message = "<div class='alert error'>Folder already exists!</div>";
+        } else {
+            $sql = "INSERT INTO categories (name, is_private) VALUES ('$cat_name', '$is_private')";
+            mysqli_query($conn, $sql);
+            $message = "<div class='alert success'>Folder created!</div>";
+        }
+    }
+}
+
+// --- ACTION 2: RENAME CATEGORY ---
+if (isset($_POST['rename_category'])) {
+    $cat_id = $_POST['rename_cat_id'];
+    $old_name = mysqli_real_escape_string($conn, $_POST['old_cat_name']);
+    $new_name = mysqli_real_escape_string($conn, $_POST['new_cat_name']);
+
+    // 1. Update Category Table
+    $update_cat = "UPDATE categories SET name='$new_name' WHERE id='$cat_id'";
+    if (mysqli_query($conn, $update_cat)) {
+        // 2. Update All Documents in this Folder
+        $update_docs = "UPDATE documents SET category='$new_name' WHERE category='$old_name'";
+        mysqli_query($conn, $update_docs);
+        $message = "<div class='alert success'>Folder renamed and files updated!</div>";
+    } else {
+        $message = "<div class='alert error'>Error updating folder.</div>";
+    }
+}
+
+// --- ACTION 3: DELETE CATEGORY ---
+if (isset($_GET['del_cat_id'])) {
+    if (!$is_admin) {
+        die("Access Denied");
+    }
+
+    $del_id = $_GET['del_cat_id'];
+    $cat_name = $_GET['cat_name'];
+
+    // Check if folder is empty
+    $check_files = mysqli_query($conn, "SELECT * FROM documents WHERE category='$cat_name'");
+    if (mysqli_num_rows($check_files) > 0) {
+        $message = "<div class='alert error'>Cannot delete folder! It contains files.</div>";
+    } else {
+        mysqli_query($conn, "DELETE FROM categories WHERE id='$del_id'");
+        $message = "<div class='alert success'>Folder deleted successfully.</div>";
+    }
+}
+
+// --- ACTION 4: UPLOAD FILE ---
 if (isset($_POST['upload_file'])) {
-    // 'title' என்று மாற்றப்பட்டுள்ளது
     $title = mysqli_real_escape_string($conn, $_POST['title']);
     $category = mysqli_real_escape_string($conn, $_POST['category']);
-
     $filename = $_FILES['file']['name'];
-    $filesize = $_FILES['file']['size'];
-    $tmp_name = $_FILES['file']['tmp_name'];
     $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
-
-    // Size Calculation
-    if ($filesize >= 1048576) {
-        $size_text = number_format($filesize / 1048576, 2) . ' MB';
-    } else {
-        $size_text = number_format($filesize / 1024, 2) . ' KB';
-    }
-
+    $filesize = $_FILES['file']['size'];
+    $size_text = ($filesize >= 1048576) ? number_format($filesize / 1048576, 2) . ' MB' : number_format($filesize / 1024, 2) . ' KB';
     $new_filename = uniqid() . "." . $ext;
-    $target_dir = "uploads/";
 
-    // Uploads folder உள்ளதா என சரிபார்த்தல்
-    if (!file_exists($target_dir)) {
-        mkdir($target_dir, 0777, true);
-    }
-
-    $target_file = $target_dir . $new_filename;
-
-    if (move_uploaded_file($tmp_name, $target_file)) {
-        // Query-ல் 'title' பயன்படுத்தப்பட்டுள்ளது
-        $sql = "INSERT INTO documents (title, category, file_path, file_type, file_size) 
-                VALUES ('$title', '$category', '$new_filename', '$ext', '$size_text')";
-
-        if (mysqli_query($conn, $sql)) {
-            $message = "<div class='alert success'>File Uploaded Successfully!</div>";
-        } else {
-            $message = "<div class='alert error'>Database Error: " . mysqli_error($conn) . "</div>";
-        }
-    } else {
-        $message = "<div class='alert error'>Failed to upload file. Check folder permissions.</div>";
+    if (move_uploaded_file($_FILES['file']['tmp_name'], "uploads/" . $new_filename)) {
+        $sql = "INSERT INTO documents (title, category, file_path, file_type, file_size, is_starred) 
+                VALUES ('$title', '$category', '$new_filename', '$ext', '$size_text', 0)";
+        mysqli_query($conn, $sql);
+        $message = "<div class='alert success'>File Uploaded!</div>";
     }
 }
 
-// --- ACTION 2: STAR / UNSTAR DOCUMENT ---
-if (isset($_GET['star_id'])) {
-    $id = $_GET['star_id'];
-    $status = $_GET['status'];
-    // 'doc_id' பயன்படுத்தப்பட்டுள்ளது
-    mysqli_query($conn, "UPDATE documents SET is_starred='$status' WHERE doc_id='$id'");
-    header("Location: documents.php");
+// --- ACTION 5: EDIT FILE ---
+if (isset($_POST['edit_file'])) {
+    $doc_id = $_POST['edit_doc_id'];
+    $new_title = mysqli_real_escape_string($conn, $_POST['edit_title']);
+    $new_cat = mysqli_real_escape_string($conn, $_POST['edit_category']);
+    mysqli_query($conn, "UPDATE documents SET title='$new_title', category='$new_cat' WHERE doc_id='$doc_id'");
+    $message = "<div class='alert success'>Document Updated!</div>";
 }
 
-// --- ACTION 3: DELETE DOCUMENT ---
+// --- ACTION 6: DELETE FILE ---
 if (isset($_GET['delete_id'])) {
     $id = $_GET['delete_id'];
     $path = $_GET['path'];
-    // 'doc_id' பயன்படுத்தப்பட்டுள்ளது
     mysqli_query($conn, "DELETE FROM documents WHERE doc_id='$id'");
     if (file_exists("uploads/" . $path)) {
         unlink("uploads/" . $path);
     }
     header("Location: documents.php");
+    exit();
 }
 
-// --- FILTER LOGIC ---
+// --- DATA FETCHING ---
 $current_folder = isset($_GET['folder']) ? $_GET['folder'] : 'All';
 $search_query = isset($_GET['search']) ? $_GET['search'] : '';
 
-$sql_docs = "SELECT * FROM documents WHERE 1=1";
+// Fetch Folders
+$folder_sql = "SELECT * FROM categories";
+if (!$is_admin) {
+    $folder_sql .= " WHERE is_private = 0";
+}
+$folder_sql .= " ORDER BY name ASC";
+$result_folders = mysqli_query($conn, $folder_sql);
 
+// Fetch Docs
+$sql_docs = "SELECT * FROM documents WHERE 1=1";
 if ($current_folder != 'All') {
     $sql_docs .= " AND category = '$current_folder'";
 }
 if ($search_query != '') {
-    // 'title' பயன்படுத்தப்பட்டுள்ளது
     $sql_docs .= " AND title LIKE '%$search_query%'";
 }
-
-// Starred Documents First, then Newest First
 $sql_docs .= " ORDER BY is_starred DESC, doc_id DESC";
 $result_docs = mysqli_query($conn, $sql_docs);
-
-// Get Folders List
-$sql_folders = "SELECT DISTINCT category FROM documents";
-$result_folders = mysqli_query($conn, $sql_folders);
 ?>
 
 <!DOCTYPE html>
@@ -102,19 +137,17 @@ $result_folders = mysqli_query($conn, $sql_folders);
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document Repository | College Office</title>
+    <title>Documents | College Office</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="dashboard.css">
 
     <style>
-        /* --- STYLES (Same as before) --- */
         .doc-layout {
             display: grid;
-            grid-template-columns: 260px 1fr;
+            grid-template-columns: 280px 1fr;
             gap: 25px;
-            height: calc(100vh - 100px);
+            height: calc(100vh - 140px);
         }
 
         .doc-sidebar {
@@ -128,224 +161,232 @@ $result_folders = mysqli_query($conn, $sql_folders);
         }
 
         .btn-upload {
-            background-color: #059669;
+            background: #ED8936;
             color: white;
             padding: 12px;
             border-radius: 8px;
-            text-align: center;
-            cursor: pointer;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            transition: 0.2s;
             border: none;
             width: 100%;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            gap: 8px;
         }
 
         .btn-upload:hover {
-            background-color: #047857;
+            background: #D67625;
+        }
+
+        .btn-new-folder {
+            background: white;
+            border: 1px solid #E5E7EB;
+            color: #374151;
+            padding: 10px;
+            border-radius: 8px;
+            width: 100%;
+            cursor: pointer;
+            font-weight: 500;
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-new-folder:hover {
+            background: #F9FAFB;
         }
 
         .folder-list {
             list-style: none;
             padding: 0;
+            overflow-y: auto;
+            flex: 1;
         }
 
-        .folder-item a {
+        .folder-item {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 12px;
-            color: #4B5563;
-            text-decoration: none;
+            justify-content: space-between;
+            padding: 8px 10px;
+            margin-bottom: 2px;
             border-radius: 8px;
             transition: 0.2s;
-            font-size: 14px;
         }
 
-        .folder-item a:hover,
-        .folder-item a.active {
-            background-color: #ECFDF5;
-            color: #059669;
-            font-weight: 600;
+        .folder-item:hover {
+            background: #FFF7ED;
+        }
+
+        .folder-item.active-item {
+            background: #ED8936;
+        }
+
+        .folder-item.active-item a,
+        .folder-item.active-item i {
+            color: white !important;
+        }
+
+        .folder-link {
+            text-decoration: none;
+            color: #4B5563;
+            font-size: 14px;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .folder-actions {
+            display: none;
+            gap: 5px;
+        }
+
+        .folder-item:hover .folder-actions {
+            display: flex;
+        }
+
+        .f-btn {
+            font-size: 11px;
+            padding: 4px;
+            color: #9CA3AF;
+            cursor: pointer;
+        }
+
+        .f-btn:hover {
+            color: #ED8936;
+        }
+
+        .f-btn.del:hover {
+            color: #EF4444;
         }
 
         .doc-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 20px;
             overflow-y: auto;
-            padding-right: 10px;
             align-content: start;
         }
 
         .file-card {
             background: white;
             border-radius: 12px;
-            padding: 20px;
-            border: 1px solid #F3F4F6;
+            padding: 15px;
+            border: 1px solid #E5E7EB;
             position: relative;
             transition: 0.2s;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
-            height: 180px;
         }
 
         .file-card:hover {
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
-            border-color: #ED8936;
             transform: translateY(-3px);
-        }
-
-        .star-icon {
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            color: #D1D5DB;
-            cursor: pointer;
-            font-size: 16px;
-            transition: 0.2s;
-        }
-
-        .star-icon.active {
-            color: #F59E0B;
-        }
-
-        .star-icon:hover {
-            transform: scale(1.2);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+            border-color: #ED8936;
         }
 
         .file-icon-box {
-            width: 50px;
-            height: 50px;
-            border-radius: 10px;
+            height: 90px;
+            background: #F9FAFB;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24px;
+            font-size: 32px;
             margin-bottom: 15px;
+            cursor: pointer;
         }
 
         .type-pdf {
-            background: #FEF2F2;
             color: #EF4444;
+            background: #FEF2F2;
         }
 
         .type-img {
-            background: #F3E8FF;
-            color: #9333EA;
+            color: #8B5CF6;
+            background: #F5F3FF;
         }
 
         .type-doc {
-            background: #EFF6FF;
             color: #3B82F6;
-        }
-
-        .type-zip {
-            background: #FFF7ED;
-            color: #EA580C;
+            background: #EFF6FF;
         }
 
         .file-name {
-            font-size: 14px;
             font-weight: 600;
+            font-size: 14px;
             color: #1F2937;
-            margin-bottom: 5px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
 
         .file-meta {
-            font-size: 12px;
+            font-size: 11px;
             color: #9CA3AF;
+            margin-bottom: 10px;
             display: flex;
             justify-content: space-between;
         }
 
         .file-actions {
-            margin-top: 15px;
+            display: flex;
+            gap: 5px;
             border-top: 1px solid #F3F4F6;
             padding-top: 10px;
-            display: flex;
             justify-content: space-between;
         }
 
         .action-btn {
             color: #6B7280;
-            font-size: 14px;
+            font-size: 13px;
             cursor: pointer;
+            padding: 4px;
             transition: 0.2s;
+            text-decoration: none;
         }
 
         .action-btn:hover {
             color: #ED8936;
         }
 
+        /* Modals */
         .modal-overlay {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(5px);
+            background: rgba(0, 0, 0, 0.5);
             z-index: 1000;
             display: none;
             justify-content: center;
             align-items: center;
+            backdrop-filter: blur(5px);
         }
 
         .modal-content {
             background: white;
-            padding: 30px;
-            border-radius: 16px;
-            width: 500px;
-            max-width: 90%;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+            width: 450px;
+            padding: 25px;
+            border-radius: 12px;
             position: relative;
-        }
-
-        .preview-content {
-            width: 800px;
-            height: 85vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .preview-frame {
-            flex: 1;
-            border: none;
-            background: #F3F4F6;
-            border-radius: 8px;
-            margin-top: 15px;
-        }
-
-        .preview-img {
-            max-width: 100%;
-            max-height: 70vh;
-            margin: auto;
-            display: block;
-            border-radius: 8px;
+            box-shadow: 0 20px 25px rgba(0, 0, 0, 0.1);
         }
 
         .close-modal {
             position: absolute;
             top: 15px;
-            right: 20px;
-            font-size: 20px;
-            color: #6B7280;
+            right: 15px;
             cursor: pointer;
+            color: #9CA3AF;
         }
 
         .form-input {
             width: 100%;
-            padding: 12px;
-            border: 1px solid #E5E7EB;
-            border-radius: 8px;
+            padding: 10px;
+            border: 1px solid #D1D5DB;
+            border-radius: 6px;
             margin-bottom: 15px;
             outline: none;
         }
@@ -355,9 +396,11 @@ $result_folders = mysqli_query($conn, $sql_folders);
         }
 
         .alert {
-            padding: 15px;
+            padding: 12px;
             margin-bottom: 20px;
             border-radius: 8px;
+            font-size: 14px;
+            text-align: center;
         }
 
         .success {
@@ -373,21 +416,17 @@ $result_folders = mysqli_query($conn, $sql_folders);
 </head>
 
 <body>
-
     <div class="dashboard-container">
         <?php $page = 'documents';
         include 'sidebar.php'; ?>
 
         <main class="main-content">
-
             <header class="top-header">
-                <h2>Central Document Repository</h2>
-                <div class="header-right">
-                    <form action="" method="GET">
-                        <div class="search-bar">
-                            <i class="fa-solid fa-magnifying-glass"></i>
-                            <input type="text" name="search" placeholder="Search files..." value="<?php echo $search_query; ?>">
-                        </div>
+                <h2>Document Center</h2>
+                <div class="search-bar" style="background:white; padding:8px 15px; border-radius:8px; border:1px solid #E5E7EB; display:flex; align-items:center; width:300px;">
+                    <i class="fa-solid fa-magnifying-glass" style="color:#9CA3AF; margin-right:10px;"></i>
+                    <form action="" method="GET" style="flex:1;">
+                        <input type="text" name="search" placeholder="Search..." value="<?php echo htmlspecialchars($search_query); ?>" style="border:none; outline:none; width:100%;">
                     </form>
                 </div>
             </header>
@@ -396,26 +435,39 @@ $result_folders = mysqli_query($conn, $sql_folders);
 
             <div class="doc-layout">
                 <aside class="doc-sidebar">
-                    <button class="btn-upload" onclick="openUploadModal()">
-                        <i class="fa-solid fa-cloud-arrow-up"></i> Upload File
-                    </button>
+                    <button class="btn-upload" onclick="openModal('uploadModal')"><i class="fa-solid fa-cloud-arrow-up"></i> Upload</button>
+                    <button class="btn-new-folder" onclick="openModal('catModal')"><i class="fa-solid fa-folder-plus"></i> New Folder</button>
+
                     <div>
-                        <p style="font-size:12px; font-weight:700; color:#9CA3AF; margin-bottom:10px; text-transform:uppercase;">Folders</p>
+                        <p style="font-size:11px; font-weight:700; color:#9CA3AF; margin-bottom:10px; text-transform:uppercase;">Folders</p>
                         <ul class="folder-list">
-                            <li class="folder-item">
-                                <a href="documents.php" class="<?php echo ($current_folder == 'All') ? 'active' : ''; ?>">
-                                    <i class="fa-regular fa-folder-open"></i> All Documents
-                                </a>
+                            <li class="folder-item <?php echo ($current_folder == 'All') ? 'active-item' : ''; ?>">
+                                <a href="documents.php" class="folder-link"><i class="fa-solid fa-layer-group"></i> All Files</a>
                             </li>
                             <?php
-                            while ($folder = mysqli_fetch_assoc($result_folders)) {
-                                if (!empty($folder['category'])) {
-                                    $active = ($current_folder == $folder['category']) ? 'active' : '';
-                                    echo "<li class='folder-item'>
-                                        <a href='documents.php?folder={$folder['category']}' class='$active'>
-                                            <i class='fa-regular fa-folder'></i> {$folder['category']}
-                                        </a>
-                                      </li>";
+                            if (mysqli_num_rows($result_folders) > 0) {
+                                mysqli_data_seek($result_folders, 0);
+                                while ($cat = mysqli_fetch_assoc($result_folders)) {
+                                    $cName = $cat['name'];
+                                    $cId = $cat['id'];
+                                    $isPriv = $cat['is_private'];
+                                    $isActive = ($current_folder == $cName) ? 'active-item' : '';
+                                    $lock = ($isPriv == 1) ? '<i class="fa-solid fa-lock" style="font-size:10px; opacity:0.5;"></i>' : '';
+
+                                    echo "<li class='folder-item $isActive'>
+                                            <a href='documents.php?folder=$cName' class='folder-link'>
+                                                <i class='fa-regular fa-folder'></i> $cName $lock
+                                            </a>";
+
+                                    if ($is_admin) {
+                                        echo "<div class='folder-actions'>
+                                                <i class='fa-solid fa-pen f-btn' title='Rename' onclick=\"openRenameModal('$cId', '$cName')\"></i>
+                                                <a href='documents.php?del_cat_id=$cId&cat_name=$cName' onclick=\"return confirm('Delete folder: $cName? (Must be empty)')\">
+                                                    <i class='fa-solid fa-trash f-btn del' title='Delete'></i>
+                                                </a>
+                                              </div>";
+                                    }
+                                    echo "</li>";
                                 }
                             }
                             ?>
@@ -424,56 +476,48 @@ $result_folders = mysqli_query($conn, $sql_folders);
                 </aside>
 
                 <div class="doc-grid">
-                    <?php
-                    if (mysqli_num_rows($result_docs) > 0) {
-                        while ($doc = mysqli_fetch_assoc($result_docs)) {
-                            $ext = $doc['file_type'];
-                            $icon_class = "fa-file";
-                            $color_class = "type-doc";
-                            if (in_array($ext, ['pdf'])) {
-                                $icon_class = "fa-file-pdf";
-                                $color_class = "type-pdf";
+                    <?php if (mysqli_num_rows($result_docs) > 0): ?>
+                        <?php while ($doc = mysqli_fetch_assoc($result_docs)):
+                            $ext = strtolower($doc['file_type']);
+                            $bg = "type-doc";
+                            $icon = "fa-file";
+
+                            if ($ext == 'pdf') {
+                                $bg = "type-pdf"; // Red
+                                $icon = "fa-file-pdf";
                             } elseif (in_array($ext, ['jpg', 'jpeg', 'png', 'gif'])) {
-                                $icon_class = "fa-image";
-                                $color_class = "type-img";
-                            } elseif (in_array($ext, ['zip', 'rar'])) {
-                                $icon_class = "fa-file-zipper";
-                                $color_class = "type-zip";
+                                $bg = "type-img"; // Purple
+                                $icon = "fa-image";
+                            } elseif (in_array($ext, ['mp4', 'webm', 'ogg'])) {
+                                $bg = "type-pdf"; // Reuse Red
+                                $icon = "fa-file-video";
+                            } elseif (in_array($ext, ['mp3', 'wav'])) {
+                                $bg = "type-img"; // Reuse Purple
+                                $icon = "fa-file-audio";
+                            } elseif ($ext == 'txt') {
+                                $bg = "type-doc"; // Blue
+                                $icon = "fa-file-lines";
                             }
-
-                            $star_class = ($doc['is_starred'] == 1) ? 'active' : '';
-                            $star_status = ($doc['is_starred'] == 1) ? 0 : 1;
-
-                            // doc_id மற்றும் title பயன்படுத்தப்பட்டுள்ளது
-                            $doc_id = $doc['doc_id'];
-                            $doc_title = $doc['title'];
-                    ?>
+                        ?>
                             <div class="file-card">
-                                <a href="documents.php?star_id=<?php echo $doc_id; ?>&status=<?php echo $star_status; ?>"
-                                    class="star-icon <?php echo $star_class; ?>" title="Pin/Unpin"><i class="fa-solid fa-star"></i></a>
-
-                                <div class="file-info-area" onclick="openPreview('<?php echo $doc_title; ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')">
-                                    <div class="file-icon-box <?php echo $color_class; ?>"><i class="fa-regular <?php echo $icon_class; ?>"></i></div>
-                                    <h4 class="file-name" title="<?php echo $doc_title; ?>"><?php echo $doc_title; ?></h4>
-                                    <div class="file-meta">
-                                        <span><?php echo $doc['file_size']; ?></span>
-                                        <span><?php echo $doc['category']; ?></span>
-                                    </div>
+                                <div class="file-icon-box <?php echo $bg; ?>" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')">
+                                    <i class="fa-regular <?php echo $icon; ?>"></i>
                                 </div>
+                                <div class="file-name" title="<?php echo $doc['title']; ?>"><?php echo $doc['title']; ?></div>
+                                <div class="file-meta"><span><?php echo $doc['file_size']; ?></span><span><?php echo $doc['category']; ?></span></div>
 
                                 <div class="file-actions">
-                                    <span class="action-btn" onclick="openPreview('<?php echo $doc_title; ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')"><i class="fa-regular fa-eye"></i> View</span>
-                                    <a href="uploads/<?php echo $doc['file_path']; ?>" download class="action-btn"><i class="fa-solid fa-download"></i></a>
-                                    <a href="documents.php?delete_id=<?php echo $doc_id; ?>&path=<?php echo $doc['file_path']; ?>"
-                                        class="action-btn" style="color:#EF4444;" onclick="return confirm('Delete this file?')"><i class="fa-regular fa-trash-can"></i></a>
+                                    <span class="action-btn" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')" title="View"><i class="fa-regular fa-eye"></i></span>
+
+                                    <span class="action-btn" onclick="openEditModal('<?php echo $doc['doc_id']; ?>', '<?php echo addslashes($doc['title']); ?>', '<?php echo $doc['category']; ?>')" title="Edit"><i class="fa-solid fa-pen"></i></span>
+                                    <a href="uploads/<?php echo $doc['file_path']; ?>" download class="action-btn" title="DL"><i class="fa-solid fa-download"></i></a>
+                                    <a href="documents.php?delete_id=<?php echo $doc['doc_id']; ?>&path=<?php echo $doc['file_path']; ?>" class="action-btn" style="color:#EF4444;" onclick="return confirm('Delete?')" title="Del"><i class="fa-regular fa-trash-can"></i></a>
                                 </div>
                             </div>
-                    <?php
-                        }
-                    } else {
-                        echo "<p style='color:#6B7280; padding:20px;'>No documents found.</p>";
-                    }
-                    ?>
+                        <?php endwhile; ?>
+                    <?php else: ?>
+                        <div style="grid-column:1/-1; text-align:center; padding:50px; color:#9CA3AF;">No files found.</div>
+                    <?php endif; ?>
                 </div>
             </div>
         </main>
@@ -482,49 +526,102 @@ $result_folders = mysqli_query($conn, $sql_folders);
     <div id="uploadModal" class="modal-overlay">
         <div class="modal-content">
             <span class="close-modal" onclick="closeModal('uploadModal')">&times;</span>
-            <h3 style="margin-bottom:20px;">Upload New Document</h3>
+            <h3 style="margin-bottom:20px;">Upload File</h3>
             <form action="" method="POST" enctype="multipart/form-data">
-                <label style="font-size:12px; font-weight:bold; color:#6B7280;">Document Title</label>
-                <input type="text" name="title" class="form-input" placeholder="Ex: Academic Calendar" required>
-
-                <label style="font-size:12px; font-weight:bold; color:#6B7280;">Category</label>
-                <input type="text" name="category" class="form-input" list="cat_list" placeholder="Select or Type New" required>
-                <datalist id="cat_list">
-                    <option value="Circulars">
-                    <option value="Legal">
-                    <option value="Forms">
-                </datalist>
-
-                <label style="font-size:12px; font-weight:bold; color:#6B7280;">Select File</label>
+                <input type="text" name="title" class="form-input" required placeholder="File Title">
+                <select name="category" class="form-input" required>
+                    <?php mysqli_data_seek($result_folders, 0);
+                    while ($c = mysqli_fetch_assoc($result_folders)) {
+                        echo "<option value='" . $c['name'] . "'>" . $c['name'] . "</option>";
+                    } ?>
+                </select>
                 <input type="file" name="file" class="form-input" required>
+                <button type="submit" name="upload_file" class="btn-upload">Upload</button>
+            </form>
+        </div>
+    </div>
 
-                <button type="submit" name="upload_file" class="btn-upload" style="width:100%; margin-top:10px;">Upload Now</button>
+    <div id="catModal" class="modal-overlay">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('catModal')">&times;</span>
+            <h3 style="margin-bottom:20px;">New Folder</h3>
+            <form action="" method="POST">
+                <input type="text" name="cat_name" class="form-input" required placeholder="Folder Name">
+                <?php if ($is_admin): ?><label><input type="checkbox" name="is_private"> Private (Admin Only)</label><br><br><?php endif; ?>
+                <button type="submit" name="create_category" class="btn-upload">Create</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="editModal" class="modal-overlay">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('editModal')">&times;</span>
+            <h3 style="margin-bottom:20px;">Edit File</h3>
+            <form action="" method="POST">
+                <input type="hidden" name="edit_doc_id" id="edit_doc_id">
+                <label style="font-size:12px;">Title</label>
+                <input type="text" name="edit_title" id="edit_title" class="form-input" required>
+                <label style="font-size:12px;">Move to Folder</label>
+                <select name="edit_category" id="edit_category" class="form-input" required>
+                    <?php mysqli_data_seek($result_folders, 0);
+                    while ($c = mysqli_fetch_assoc($result_folders)) {
+                        echo "<option value='" . $c['name'] . "'>" . $c['name'] . "</option>";
+                    } ?>
+                </select>
+                <button type="submit" name="edit_file" class="btn-upload">Save</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="renameModal" class="modal-overlay">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('renameModal')">&times;</span>
+            <h3 style="margin-bottom:20px;">Rename Folder</h3>
+            <form action="" method="POST">
+                <input type="hidden" name="rename_cat_id" id="rename_cat_id">
+                <input type="hidden" name="old_cat_name" id="old_cat_name">
+                <label style="font-size:12px;">New Name</label>
+                <input type="text" name="new_cat_name" id="new_cat_name" class="form-input" required>
+                <div style="font-size:12px; color:#EF4444; margin-bottom:10px;">Warning: This will update all files inside this folder to the new name.</div>
+                <button type="submit" name="rename_category" class="btn-upload">Update Name</button>
             </form>
         </div>
     </div>
 
     <div id="previewModal" class="modal-overlay">
-        <div class="modal-content preview-content">
-            <span class="close-modal" onclick="closeModal('previewModal')">&times;</span>
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <h3 id="previewTitle">Preview</h3>
-                <div>
-                    <button onclick="printDoc()" style="padding:8px 15px; border:1px solid #ccc; background:white; cursor:pointer; border-radius:5px;"><i class="fa-solid fa-print"></i> Print</button>
-                    <a id="downloadBtn" href="#" download style="padding:8px 15px; background:#ED8936; color:white; text-decoration:none; border-radius:5px; margin-left:10px;"><i class="fa-solid fa-download"></i> Download</a>
+        <div class="modal-content" style="width:800px; height:85vh; display:flex; flex-direction:column; padding:0; background:transparent; box-shadow:none;">
+            <div style="background:white; padding:15px 20px; border-radius:12px 12px 0 0; display:flex; justify-content:space-between; align-items:center;">
+                <h3 id="previewTitle" style="color:#1F293B; margin:0; font-size:18px;">Preview</h3>
+                <div style="display:flex; gap:10px;">
+                    <a id="downloadBtn" href="#" download style="padding:8px 15px; background:#F17C1C; color:white; text-decoration:none; border-radius:6px; font-size:13px; font-weight:600;"><i class="fa-solid fa-download"></i> Download</a>
+                    <i class="fa-solid fa-xmark" onclick="closeModal('previewModal')" style="font-size:24px; color:#64748B; cursor:pointer; display:flex; align-items:center;"></i>
                 </div>
             </div>
-            <div id="previewBody" style="flex:1; margin-top:15px; overflow:hidden; border-radius:8px; background:#f9f9f9; display:flex; align-items:center; justify-content:center;"></div>
+            <div id="previewBody" style="flex:1; background:#F1F5F9; border-radius:0 0 12px 12px; overflow:hidden; display:flex; align-items:center; justify-content:center; position:relative;"></div>
         </div>
     </div>
 
     <script>
-        function openUploadModal() {
-            document.getElementById('uploadModal').style.display = 'flex';
+        function openModal(id) {
+            document.getElementById(id).style.display = 'flex';
         }
 
         function closeModal(id) {
             document.getElementById(id).style.display = 'none';
-            if (id === 'previewModal') document.getElementById('previewBody').innerHTML = '';
+        }
+
+        function openEditModal(id, title, cat) {
+            document.getElementById('edit_doc_id').value = id;
+            document.getElementById('edit_title').value = title;
+            document.getElementById('edit_category').value = cat;
+            openModal('editModal');
+        }
+
+        function openRenameModal(id, name) {
+            document.getElementById('rename_cat_id').value = id;
+            document.getElementById('old_cat_name').value = name;
+            document.getElementById('new_cat_name').value = name;
+            openModal('renameModal');
         }
 
         function openPreview(name, path, ext) {
@@ -533,25 +630,30 @@ $result_folders = mysqli_query($conn, $sql_folders);
             document.getElementById('downloadBtn').href = path;
             const container = document.getElementById('previewBody');
             container.innerHTML = '';
-            if (['jpg', 'jpeg', 'png', 'gif'].includes(ext.toLowerCase())) {
-                container.innerHTML = `<img src="${path}" class="preview-img">`;
-            } else if (ext.toLowerCase() === 'pdf') {
-                container.innerHTML = `<iframe src="${path}" class="preview-frame" width="100%" height="100%"></iframe>`;
+
+            var extLc = ext.toLowerCase();
+
+            if (['jpg', 'jpeg', 'png', 'gif'].includes(extLc)) {
+                container.innerHTML = `<img src="${path}" style="max-width:100%; max-height:100%; object-fit:contain;">`;
+            } else if (extLc === 'pdf') {
+                container.innerHTML = `<iframe src="${path}" style="width:100%; height:100%; border:none;"></iframe>`;
+            } else if (['mp4', 'webm', 'ogg'].includes(extLc)) {
+                container.innerHTML = `<video src="${path}" controls style="max-width:100%; max-height:100%; outline:none; box-shadow:0 4px 10px rgba(0,0,0,0.1); border-radius:8px;"></video>`;
+            } else if (['mp3', 'wav'].includes(extLc)) {
+                container.innerHTML = `<audio src="${path}" controls style="width:80%; outline:none;"></audio>`;
+            } else if (extLc === 'txt') {
+                container.innerHTML = `<iframe src="${path}" style="width:100%; height:100%; border:none; background:white;"></iframe>`;
             } else {
-                container.innerHTML = `<div style="text-align:center; color:#666;">No preview available.<br>Please download.</div>`;
+                container.innerHTML = `<div style="text-align:center; color:#64748B;">No preview available for this file type.<br>Please download to view.</div>`;
             }
         }
 
-        function printDoc() {
-            const frame = document.querySelector('.preview-frame');
-            if (frame) {
-                frame.contentWindow.print();
-            } else {
-                window.print();
+        window.onclick = function(e) {
+            if (e.target.classList.contains('modal-overlay')) {
+                e.target.style.display = "none";
             }
         }
     </script>
-
 </body>
 
 </html>
