@@ -338,16 +338,64 @@ $result_docs = mysqli_query($conn, $sql_docs);
         }
 
         .action-btn {
-            color: #6B7280;
-            font-size: 13px;
-            cursor: pointer;
-            padding: 4px;
-            transition: 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 600;
             text-decoration: none;
+            transition: all 0.2s;
+            border: 1px solid transparent;
         }
 
-        .action-btn:hover {
-            color: #ED8936;
+        .btn-view {
+            background: #F0F9FF;
+            color: #0284C7;
+            border-color: #BAE6FD;
+        }
+
+        .btn-view:hover {
+            background: #E0F2FE;
+            color: #0369A1;
+            border-color: #7DD3FC;
+        }
+
+        .btn-edit {
+            background: #FFFBEB;
+            color: #B45309;
+            border-color: #FDE68A;
+        }
+
+        .btn-edit:hover {
+            background: #FEF3C7;
+            color: #92400E;
+            border-color: #FCD34D;
+        }
+
+        .btn-get {
+            background: #F0FDF4;
+            color: #15803D;
+            border-color: #BBF7D0;
+        }
+
+        .btn-get:hover {
+            background: #DCFCE7;
+            color: #166534;
+            border-color: #86EFAC;
+        }
+
+        .btn-del {
+            background: #FEF2F2;
+            color: #DC2626;
+            border-color: #FECACA;
+        }
+
+        .btn-del:hover {
+            background: #FEE2E2;
+            color: #B91C1C;
+            border-color: #FCA5A5;
         }
 
         /* Modals */
@@ -506,12 +554,11 @@ $result_docs = mysqli_query($conn, $sql_docs);
                                 <div class="file-name" title="<?php echo $doc['title']; ?>"><?php echo $doc['title']; ?></div>
                                 <div class="file-meta"><span><?php echo $doc['file_size']; ?></span><span><?php echo $doc['category']; ?></span></div>
 
-                                <div class="file-actions">
-                                    <span class="action-btn" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')" title="View"><i class="fa-regular fa-eye"></i></span>
-
-                                    <span class="action-btn" onclick="openEditModal('<?php echo $doc['doc_id']; ?>', '<?php echo addslashes($doc['title']); ?>', '<?php echo $doc['category']; ?>')" title="Edit"><i class="fa-solid fa-pen"></i></span>
-                                    <a href="uploads/<?php echo $doc['file_path']; ?>" download class="action-btn" title="DL"><i class="fa-solid fa-download"></i></a>
-                                    <a href="documents.php?delete_id=<?php echo $doc['doc_id']; ?>&path=<?php echo $doc['file_path']; ?>" class="action-btn" style="color:#EF4444;" onclick="return confirm('Delete?')" title="Del"><i class="fa-regular fa-trash-can"></i></a>
+                                <div class="file-actions" style="flex-wrap: wrap; justify-content: flex-start;">
+                                    <span class="action-btn btn-view" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')"><i class="fa-regular fa-eye"></i> View</span>
+                                    <span class="action-btn btn-edit" onclick="openEditModal('<?php echo $doc['doc_id']; ?>', '<?php echo addslashes($doc['title']); ?>', '<?php echo $doc['category']; ?>')"><i class="fa-solid fa-pen"></i> Edit</span>
+                                    <a href="uploads/<?php echo $doc['file_path']; ?>" download class="action-btn btn-get"><i class="fa-solid fa-download"></i> Get</a>
+                                    <a href="documents.php?delete_id=<?php echo $doc['doc_id']; ?>&path=<?php echo $doc['file_path']; ?>" class="action-btn btn-del" onclick="return confirm('Delete?')"><i class="fa-solid fa-trash"></i> Del</a>
                                 </div>
                             </div>
                         <?php endwhile; ?>

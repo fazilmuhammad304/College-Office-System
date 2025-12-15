@@ -11,8 +11,7 @@
         <a href="dashboard.php" class="menu-item <?php if ($page == 'dashboard') {
                                                         echo 'active';
                                                     } ?>">
-            <i class="fa-solid fa-gauge-high"></i>
-            Dashboard
+            <i class="fa-solid fa-gauge-high"></i> Dashboard
         </a>
 
         <p class="menu-label">Directory</p>
@@ -36,6 +35,13 @@
         </a>
 
         <p class="menu-label">Academic</p>
+
+        <a href="programs.php" class="menu-item <?php if ($page == 'programs') {
+                                                    echo 'active';
+                                                } ?>">
+            <i class="fa-solid fa-layer-group"></i> Programs
+        </a>
+
         <a href="attendance.php" class="menu-item <?php if ($page == 'attendance') {
                                                         echo 'active';
                                                     } ?>">

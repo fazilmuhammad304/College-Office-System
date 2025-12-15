@@ -2,13 +2,13 @@
 session_start();
 include 'db_conn.php';
 
-// 1. லாகின் செக்
+// 1. LOGIN CHECK
 if (!isset($_SESSION['user_id']) && !isset($_SESSION['username'])) {
     header("Location: login.php");
     exit();
 }
 
-// 2. ஃபில்டர் லாஜிக் (Filter Logic)
+// 2. FILTER LOGIC
 $where_clauses = [];
 
 // Program Filter
@@ -44,7 +44,7 @@ $sql .= " ORDER BY student_id DESC";
 
 $result = mysqli_query($conn, $sql);
 
-// ஃபில்டர் மதிப்புகளை தக்கவைக்க (Keep selected values)
+// Keep selected values for dropdowns
 $selected_prog = isset($_GET['program']) ? $_GET['program'] : 'All';
 $selected_year = isset($_GET['year']) ? $_GET['year'] : 'All';
 $selected_status = isset($_GET['status']) ? $_GET['status'] : 'All';
@@ -100,7 +100,7 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
         }
 
         .filter-select:focus {
-            border-color: #2563EB;
+            border-color: #ED8936;
             background: white;
         }
 
@@ -118,6 +118,11 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
             background-color: #F9FAFB;
         }
 
+        .search-box input:focus {
+            border-color: #ED8936;
+            background: white;
+        }
+
         .search-box i {
             position: absolute;
             left: 12px;
@@ -126,10 +131,10 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
             color: #9CA3AF;
         }
 
-        /* --- ADD BUTTON --- */
+        /* --- ADD BUTTON (ORANGE THEME) --- */
         .btn-add {
-            background-color: #2563EB;
-            /* Royal Blue */
+            background-color: #ED8936;
+            /* Brand Orange */
             color: white;
             padding: 10px 20px;
             border-radius: 8px;
@@ -140,11 +145,12 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
             align-items: center;
             gap: 8px;
             transition: 0.2s;
-            box-shadow: 0 2px 5px rgba(37, 99, 235, 0.2);
+            box-shadow: 0 2px 5px rgba(237, 137, 54, 0.2);
         }
 
         .btn-add:hover {
-            background-color: #1D4ED8;
+            background-color: #D67625;
+            /* Darker Orange */
             transform: translateY(-1px);
         }
 
@@ -182,8 +188,10 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
         }
 
         .student-table tr:hover {
-            background-color: #FAFAFA;
+            background-color: #FFF7ED;
         }
+
+        /* Light Orange Hover */
 
         /* Student Profile Info */
         .profile-cell {
@@ -195,9 +203,8 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
         .avatar {
             width: 42px;
             height: 42px;
-            background: #E0E7FF;
-            /* Light Blue BG */
-            color: #4338CA;
+            background: #FFEDD5;
+            color: #C2410C;
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -271,8 +278,8 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
         }
 
         .btn-view:hover {
-            background: #DBEAFE;
-            color: #2563EB;
+            background: #FFEDD5;
+            color: #C2410C;
         }
 
         .btn-edit:hover {
@@ -303,24 +310,38 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
             <form action="" method="GET" id="filterForm">
                 <div class="controls-card">
                     <div class="filters-group">
-
                         <div class="search-box">
                             <i class="fa-solid fa-magnifying-glass"></i>
-                            <input type="text" name="search" placeholder="Search name, ID or phone..." value="<?php echo $search_val; ?>">
+                            <input type="text" name="search" placeholder="Search name, ID or phone..." value="<?php echo htmlspecialchars($search_val); ?>">
                         </div>
 
+                        <?php
+                        // Fetch Programs for Filter
+                        $prog_filter_query = "SELECT program_name FROM programs ORDER BY program_name ASC";
+                        $prog_filter_result = mysqli_query($conn, $prog_filter_query);
+                        ?>
                         <select name="program" class="filter-select" onchange="document.getElementById('filterForm').submit()">
                             <option value="All" <?php if ($selected_prog == 'All') echo 'selected'; ?>>All Programs</option>
-                            <option value="Hifz" <?php if ($selected_prog == 'Hifz') echo 'selected'; ?>>Al-Hafiz</option>
-                            <option value="Alim" <?php if ($selected_prog == 'Alim') echo 'selected'; ?>>Al-Alim</option>
+                            <?php
+                            if ($prog_filter_result) {
+                                while ($pf = mysqli_fetch_assoc($prog_filter_result)) {
+                                    $pName = $pf['program_name'];
+                                    $sel = ($selected_prog == $pName) ? 'selected' : '';
+                                    echo "<option value='$pName' $sel>$pName</option>";
+                                }
+                            }
+                            ?>
                         </select>
 
                         <select name="year" class="filter-select" onchange="document.getElementById('filterForm').submit()">
                             <option value="All" <?php if ($selected_year == 'All') echo 'selected'; ?>>All Years</option>
-                            <option value="1" <?php if ($selected_year == '1') echo 'selected'; ?>>Year 1</option>
-                            <option value="2" <?php if ($selected_year == '2') echo 'selected'; ?>>Year 2</option>
-                            <option value="3" <?php if ($selected_year == '3') echo 'selected'; ?>>Year 3</option>
-                            <option value="Final" <?php if ($selected_year == 'Final') echo 'selected'; ?>>Final Year</option>
+                            <option value="1" <?php if ($selected_year == '1') echo 'selected'; ?>>1st Year</option>
+                            <option value="2" <?php if ($selected_year == '2') echo 'selected'; ?>>2nd Year</option>
+                            <option value="3" <?php if ($selected_year == '3') echo 'selected'; ?>>3rd Year</option>
+                            <option value="4" <?php if ($selected_year == '4') echo 'selected'; ?>>4th Year</option>
+                            <option value="5" <?php if ($selected_year == '5') echo 'selected'; ?>>5th Year</option>
+                            <option value="6" <?php if ($selected_year == '6') echo 'selected'; ?>>6th Year</option>
+                            <option value="7th (Final Year)" <?php if ($selected_year == '7th (Final Year)') echo 'selected'; ?>>7th (Final Year)</option>
                         </select>
 
                         <select name="status" class="filter-select" onchange="document.getElementById('filterForm').submit()">
@@ -329,7 +350,6 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
                             <option value="Inactive" <?php if ($selected_status == 'Inactive') echo 'selected'; ?>>Inactive</option>
                             <option value="Graduated" <?php if ($selected_status == 'Graduated') echo 'selected'; ?>>Graduated</option>
                         </select>
-
                     </div>
 
                     <a href="add_student.php" class="btn-add">
@@ -369,9 +389,10 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
                                 if ($row['status'] == 'Graduated') $status_badge = "badge-graduated";
 
                                 // Program Display
-                                $prog_display = "Unknown";
+                                $prog_display = "General";
                                 if (strpos($row['class_year'], 'Hifz') !== false) $prog_display = "Al-Hafiz";
                                 elseif (strpos($row['class_year'], 'Alim') !== false) $prog_display = "Al-Alim";
+                                elseif (strpos($row['class_year'], 'Alimah') !== false) $prog_display = "Al-Alimah";
 
                                 echo "<tr>";
 
@@ -387,10 +408,10 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
                                       </td>";
 
                                 // 2. Program
-                                echo "<td><span style='font-weight:500; color:#4B5563;'>$prog_display</span></td>";
+                                echo "<td><span style='font-weight:600; color:#4B5563;'>$prog_display</span></td>";
 
                                 // 3. Year
-                                echo "<td><span style='color:#6B7280; background:#F3F4F6; padding:4px 8px; border-radius:6px; font-size:12px;'>" . $row['class_year'] . "</span></td>";
+                                echo "<td><span style='color:#6B7280; background:#F9FAFB; padding:4px 8px; border:1px solid #E5E7EB; border-radius:6px; font-size:12px; font-weight:500;'>" . $row['class_year'] . "</span></td>";
 
                                 // 4. Contact
                                 echo "<td>

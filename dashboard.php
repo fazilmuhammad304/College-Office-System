@@ -2,14 +2,14 @@
 session_start();
 include 'db_conn.php';
 
-// 1. லாகின் செக்
+// 1. LOGIN CHECK
 if (!isset($_SESSION['user_id']) && !isset($_SESSION['username'])) {
     header("Location: login.php");
     exit();
 }
 
 // ---------------------------------------------------------
-// 1. DATA COUNTING (PHP LOGIC)
+// 1. DATA COUNTING
 // ---------------------------------------------------------
 
 // A. Total Students
@@ -18,52 +18,44 @@ $student_result = mysqli_query($conn, $student_query);
 $student_data = mysqli_fetch_assoc($student_result);
 $total_students = isset($student_data['total']) ? intval($student_data['total']) : 0;
 
-// B. Active Students (For Percentage Calc)
-$active_query = "SELECT COUNT(*) as total FROM students WHERE status='Active'";
-$active_result = mysqli_query($conn, $active_query);
-$active_data = mysqli_fetch_assoc($active_result);
-$active_students = isset($active_data['total']) ? intval($active_data['total']) : 0;
-
-// C. PROGRAM BREAKDOWN (Faculty Removed)
-// Hifz Students Count
-$hifz_query = "SELECT COUNT(*) as total FROM students WHERE class_year LIKE '%Hifz%'";
-$hifz_data = mysqli_fetch_assoc(mysqli_query($conn, $hifz_query));
-$hifz_count = $hifz_data['total'];
-
-// Al-Alim Students Count
-$alim_query = "SELECT COUNT(*) as total FROM students WHERE class_year LIKE '%Alim%'";
-$alim_data = mysqli_fetch_assoc(mysqli_query($conn, $alim_query));
-$alim_count = $alim_data['total'];
-
-// Total Programs (Hardcoded as 2 based on your input)
-$total_programs = 2;
-
-// D. Attendance Today
+// B. Attendance Today
 $today = date('Y-m-d');
 $att_query = "SELECT COUNT(*) as present_count FROM attendance WHERE date = '$today' AND status = 'Present'";
 $att_result = mysqli_query($conn, $att_query);
 $att_data = mysqli_fetch_assoc($att_result);
 $present_today = isset($att_data['present_count']) ? intval($att_data['present_count']) : 0;
 
-// Percentage Logic
-$att_percentage = ($active_students > 0) ? round(($present_today / $active_students) * 100) : 0;
+// C. Attendance Percentage
+$active_students_query = "SELECT COUNT(*) as total FROM students WHERE status='Active'";
+$active_data = mysqli_fetch_assoc(mysqli_query($conn, $active_students_query));
+$active_count = $active_data['total'];
+$att_percentage = ($active_count > 0) ? round(($present_today / $active_count) * 100) : 0;
 
-// E. Total Documents
+// D. Total Documents
 $doc_query = "SELECT COUNT(*) as total FROM documents";
-$doc_result = mysqli_query($conn, $doc_query);
-$doc_data = mysqli_fetch_assoc($doc_result);
+$doc_data = mysqli_fetch_assoc(mysqli_query($conn, $doc_query));
 $total_docs = isset($doc_data['total']) ? intval($doc_data['total']) : 0;
 
 // ---------------------------------------------------------
-// 2. RECENT ACTIVITIES LOGIC
+// E. [UPDATED] DYNAMIC PROGRAMS COUNT
 // ---------------------------------------------------------
+// This now counts from the 'programs' table, so it includes "Pending" courses too.
+$prog_query = "SELECT COUNT(*) as total FROM programs";
+$prog_result = mysqli_query($conn, $prog_query);
 
-// Get last 3 New Students (Added created_at to get time)
-$recent_students = mysqli_query($conn, "SELECT full_name, class_year, created_at FROM students ORDER BY student_id DESC LIMIT 3");
+// If table exists, get count. If not, default to 0.
+if ($prog_result) {
+    $prog_data = mysqli_fetch_assoc($prog_result);
+    $total_programs = $prog_data['total'];
+} else {
+    $total_programs = 0; // Fallback if table doesn't exist
+}
 
-// Get last 3 Uploaded Docs
-$recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM documents ORDER BY doc_id DESC LIMIT 3");
-
+// ---------------------------------------------------------
+// 2. RECENT ACTIVITIES
+// ---------------------------------------------------------
+$recent_students = mysqli_query($conn, "SELECT full_name, class_year, created_at FROM students WHERE created_at >= NOW() - INTERVAL 1 DAY ORDER BY created_at DESC");
+$recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM documents WHERE uploaded_at >= NOW() - INTERVAL 1 DAY ORDER BY uploaded_at DESC");
 ?>
 
 <!DOCTYPE html>
@@ -78,9 +70,7 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
     <link rel="stylesheet" href="dashboard.css">
 
     <style>
-        /* --- DASHBOARD SPECIFIC STYLES --- */
-
-        /* Clickable Cards */
+        /* DASHBOARD STYLES */
         .cards-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -141,7 +131,6 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
             display: block;
         }
 
-        /* Recent Activity Section */
         .activity-section {
             background: white;
             border-radius: 16px;
@@ -157,12 +146,6 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
             margin-bottom: 20px;
             border-bottom: 1px solid #F3F4F6;
             padding-bottom: 15px;
-        }
-
-        .activity-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
         }
 
         .activity-item {
@@ -256,19 +239,19 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
                         <div class="card-info">
                             <h3><?php echo $total_students; ?></h3>
                             <span>Total Students</span>
-                            <span class="card-subtext">View All <i class="fa-solid fa-arrow-right"></i></span>
+                            <span class="card-subtext">View Directory <i class="fa-solid fa-arrow-right"></i></span>
                         </div>
                     </div>
                 </a>
 
-                <a href="students.php" class="card-link">
+                <a href="programs.php" class="card-link">
                     <div class="card">
                         <div class="card-icon bg-orange"><i class="fa-solid fa-book-quran"></i></div>
                         <div class="card-info">
                             <h3><?php echo $total_programs; ?></h3>
                             <span>Programs</span>
                             <span style="font-size:11px; color:#6B7280; margin-top:5px; display:block;">
-                                Hifz: <b><?php echo $hifz_count; ?></b> | Alim: <b><?php echo $alim_count; ?></b>
+                                Manage Courses <i class="fa-solid fa-arrow-right"></i>
                             </span>
                         </div>
                     </div>
@@ -280,7 +263,7 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
                         <div class="card-info">
                             <h3><?php echo $att_percentage; ?>%</h3>
                             <span>Attendance Today</span>
-                            <span class="card-subtext"><?php echo $present_today; ?> Present Today</span>
+                            <span class="card-subtext"><?php echo $present_today; ?> Present</span>
                         </div>
                     </div>
                 </a>
@@ -291,7 +274,7 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
                         <div class="card-info">
                             <h3><?php echo $total_docs; ?></h3>
                             <span>Documents</span>
-                            <span class="card-subtext">Manage Files <i class="fa-solid fa-arrow-right"></i></span>
+                            <span class="card-subtext">File Repository <i class="fa-solid fa-arrow-right"></i></span>
                         </div>
                     </div>
                 </a>
@@ -300,57 +283,43 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
 
             <div class="activity-section">
                 <h3 class="section-title"><i class="fa-solid fa-clock-rotate-left"></i> Recent Office Activities</h3>
-
                 <ul class="activity-list">
-
-                    <?php
-                    if (mysqli_num_rows($recent_students) > 0) {
-                        while ($rs = mysqli_fetch_assoc($recent_students)) {
-                            // தேதி மற்றும் நேரம் மாற்றம் (Format: 14 Dec, 10:30 AM)
-                            $time_label = date('d M, h:i A', strtotime($rs['created_at']));
-                    ?>
+                    <?php if (mysqli_num_rows($recent_students) > 0): ?>
+                        <?php while ($rs = mysqli_fetch_assoc($recent_students)):
+                            $time_label = date('d M, h:i A', strtotime($rs['created_at'])); ?>
                             <li class="activity-item">
                                 <div class="act-icon bg-blue"><i class="fa-solid fa-user-plus"></i></div>
                                 <div class="act-details">
-                                    <h4>New Student Admitted</h4>
-                                    <p><b><?php echo $rs['full_name']; ?></b> joined <?php echo $rs['class_year']; ?></p>
+                                    <h4>New Admission</h4>
+                                    <p><b><?php echo $rs['full_name']; ?></b> - <?php echo $rs['class_year']; ?></p>
                                 </div>
                                 <span class="act-time"><?php echo $time_label; ?></span>
                             </li>
-                    <?php
-                        }
-                    }
-                    ?>
+                        <?php endwhile; ?>
+                    <?php endif; ?>
 
-                    <?php
-                    if (mysqli_num_rows($recent_docs) > 0) {
-                        while ($rd = mysqli_fetch_assoc($recent_docs)) {
-                            // தேதி மற்றும் நேரம் மாற்றம்
-                            $time_label = date('d M, h:i A', strtotime($rd['uploaded_at']));
-                    ?>
+                    <?php if (mysqli_num_rows($recent_docs) > 0): ?>
+                        <?php while ($rd = mysqli_fetch_assoc($recent_docs)):
+                            $time_label = date('d M, h:i A', strtotime($rd['uploaded_at'])); ?>
                             <li class="activity-item">
                                 <div class="act-icon bg-purple"><i class="fa-solid fa-file-arrow-up"></i></div>
                                 <div class="act-details">
                                     <h4>Document Uploaded</h4>
-                                    <p>File <b><?php echo $rd['title']; ?></b> added to <?php echo $rd['category']; ?></p>
+                                    <p>File <b><?php echo $rd['title']; ?></b> (<?php echo $rd['category']; ?>)</p>
                                 </div>
                                 <span class="act-time"><?php echo $time_label; ?></span>
                             </li>
-                    <?php
-                        }
-                    }
-                    ?>
+                        <?php endwhile; ?>
+                    <?php endif; ?>
 
                     <?php if (mysqli_num_rows($recent_students) == 0 && mysqli_num_rows($recent_docs) == 0) { ?>
-                        <li style="text-align:center; color:#9CA3AF; padding:20px;">No recent activities found.</li>
+                        <li style="text-align:center; color:#9CA3AF; padding:20px;">No recent activities.</li>
                     <?php } ?>
-
                 </ul>
             </div>
 
         </main>
     </div>
-
 </body>
 
 </html>
