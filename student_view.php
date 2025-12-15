@@ -288,10 +288,11 @@ $curr_class = $student['class_year'];
         }
 
         /* --- DOCS --- */
+        /* --- DOCS --- */
         .doc-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-            gap: 15px;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 20px;
             margin-top: 20px;
         }
 
@@ -303,22 +304,42 @@ $curr_class = $student['class_year'];
             transition: 0.2s;
             display: flex;
             flex-direction: column;
+            position: relative;
         }
 
         .file-card:hover {
             transform: translateY(-3px);
             border-color: #ED8936;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
         }
 
         .file-icon-box {
-            height: 70px;
+            height: 90px;
             background: #F9FAFB;
             border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 28px;
-            margin-bottom: 12px;
+            font-size: 32px;
+            margin-bottom: 15px;
+            cursor: pointer;
+        }
+
+        .file-name {
+            font-weight: 600;
+            font-size: 14px;
+            color: #1F2937;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .file-meta {
+            font-size: 11px;
+            color: #9CA3AF;
+            margin-top: 5px;
+            display: flex;
+            justify-content: space-between;
         }
 
         /* --- MODAL --- */
@@ -403,6 +424,78 @@ $curr_class = $student['class_year'];
             background: #ECFDF5;
             color: #065F46;
         }
+
+        /* --- MENU STYLES --- */
+        .menu-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+        }
+
+        .menu-btn {
+            background: white;
+            border: 1px solid #E5E7EB;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: #6B7280;
+            transition: 0.2s;
+        }
+
+        .menu-btn:hover {
+            color: #1F2937;
+            background: #F3F4F6;
+        }
+
+        .dropdown-menu {
+            position: absolute;
+            top: 35px;
+            right: 0;
+            background: white;
+            border: 1px solid #E5E7EB;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            width: 140px;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 20;
+        }
+
+        .dropdown-menu.show {
+            display: flex;
+        }
+
+        .dropdown-item {
+            padding: 8px 12px;
+            font-size: 13px;
+            color: #4B5563;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: 0.2s;
+            cursor: pointer;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+        }
+
+        .dropdown-item:hover {
+            background: #FFF7ED;
+            color: #FB923C;
+        }
+
+        .dropdown-item.del:hover {
+            background: #FEF2F2;
+            color: #EF4444;
+        }
     </style>
 </head>
 
@@ -455,7 +548,10 @@ $curr_class = $student['class_year'];
                                 <option value="1st Year">1st Year</option>
                                 <option value="2nd Year">2nd Year</option>
                                 <option value="3rd Year">3rd Year</option>
-                                <option value="Final Year">Final Year</option>
+                                <option value="4th Year">4th Year</option>
+                                <option value="5th Year">5th Year</option>
+                                <option value="6th Year">6th Year</option>
+                                <option value="7th Year (Final Year)">7th Year (Final Year)</option>
                                 <option value="Graduated">Graduated</option>
                             </select>
                             <button type="submit" name="update_class_info" style="width:100%; background:#F17C1C; color:white; border:none; padding:10px; border-radius:6px; cursor:pointer;">Update</button>
@@ -547,16 +643,28 @@ $curr_class = $student['class_year'];
                                     }
                                 ?>
                                     <div class="file-card">
-                                        <div class="file-icon-box" style="background:<?php echo $bg; ?>; color:<?php echo $col; ?>;" onclick="window.open('uploads/<?php echo $doc['file_path']; ?>','_blank')">
+                                        <div class="menu-container">
+                                            <div class="menu-btn" onclick="toggleMenu('menu-<?php echo $doc['doc_id']; ?>', event)">
+                                                <i class="fa-solid fa-ellipsis-vertical"></i>
+                                            </div>
+                                            <div class="dropdown-menu" id="menu-<?php echo $doc['doc_id']; ?>">
+                                                <span class="dropdown-item" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')">
+                                                    <i class="fa-regular fa-eye"></i> View
+                                                </span>
+                                                <a href="uploads/<?php echo $doc['file_path']; ?>" download class="dropdown-item">
+                                                    <i class="fa-solid fa-download"></i> Download
+                                                </a>
+                                                <a href="student_view.php?id=<?php echo $student_id; ?>&del_doc=<?php echo $doc['doc_id']; ?>" class="dropdown-item del" onclick="return confirm('Delete?')">
+                                                    <i class="fa-solid fa-trash"></i> Delete
+                                                </a>
+                                            </div>
+                                        </div>
+
+                                        <div class="file-icon-box" style="background:<?php echo $bg; ?>; color:<?php echo $col; ?>;" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')">
                                             <i class="fa-regular <?php echo $icon; ?>"></i>
                                         </div>
                                         <div class="file-name" title="<?php echo $doc['title']; ?>"><?php echo $doc['title']; ?></div>
                                         <div class="file-meta"><?php echo $doc['file_size']; ?></div>
-                                        <div class="file-actions">
-                                            <a href="uploads/<?php echo $doc['file_path']; ?>" target="_blank" class="action-btn">View</a>
-                                            <a href="uploads/<?php echo $doc['file_path']; ?>" download class="action-btn">Get</a>
-                                            <a href="student_view.php?id=<?php echo $student_id; ?>&del_doc=<?php echo $doc['doc_id']; ?>" class="action-btn btn-del" onclick="return confirm('Delete?')">Del</a>
-                                        </div>
                                     </div>
                                 <?php endwhile; ?>
                             <?php else: ?>
@@ -568,6 +676,19 @@ $curr_class = $student['class_year'];
                 </div>
             </div>
         </main>
+    </div>
+
+    <div id="previewModal" class="modal-overlay">
+        <div class="modal-content" style="width:800px; height:85vh; display:flex; flex-direction:column; padding:0; background:transparent; box-shadow:none;">
+            <div style="background:white; padding:15px 20px; border-radius:12px 12px 0 0; display:flex; justify-content:space-between; align-items:center;">
+                <h3 id="previewTitle" style="color:#1F293B; margin:0; font-size:18px;">Preview</h3>
+                <div style="display:flex; gap:10px;">
+                    <a id="downloadBtn" href="#" download style="padding:8px 15px; background:#F17C1C; color:white; text-decoration:none; border-radius:6px; font-size:13px; font-weight:600;"><i class="fa-solid fa-download"></i> Download</a>
+                    <i class="fa-solid fa-xmark" onclick="document.getElementById('previewModal').style.display='none'" style="font-size:24px; color:#64748B; cursor:pointer; display:flex; align-items:center;"></i>
+                </div>
+            </div>
+            <div id="previewBody" style="flex:1; background:#F1F5F9; border-radius:0 0 12px 12px; overflow:hidden; display:flex; align-items:center; justify-content:center; position:relative;"></div>
+        </div>
     </div>
 
     <div id="editModal" class="modal-overlay">
@@ -635,8 +756,54 @@ $curr_class = $student['class_year'];
         function closeModal() {
             document.getElementById('editModal').style.display = 'none';
         }
+
+
+        function toggleMenu(id, event) {
+            event.stopPropagation();
+            var menu = document.getElementById(id);
+            var isVisible = menu.classList.contains('show');
+
+            // Hide all other menus
+            var allMenus = document.querySelectorAll('.dropdown-menu');
+            allMenus.forEach(m => m.classList.remove('show'));
+
+            if (!isVisible) {
+                menu.classList.add('show');
+            }
+        }
+
+        function openPreview(name, path, ext) {
+            document.getElementById('previewModal').style.display = 'flex';
+            document.getElementById('previewTitle').innerText = name;
+            document.getElementById('downloadBtn').href = path;
+            const container = document.getElementById('previewBody');
+            container.innerHTML = '';
+
+            var extLc = ext.toLowerCase();
+
+            if (['jpg', 'jpeg', 'png', 'gif'].includes(extLc)) {
+                container.innerHTML = `<img src="${path}" style="max-width:100%; max-height:100%; object-fit:contain;">`;
+            } else if (extLc === 'pdf') {
+                container.innerHTML = `<iframe src="${path}" style="width:100%; height:100%; border:none;"></iframe>`;
+            } else if (['mp4', 'webm', 'ogg'].includes(extLc)) {
+                container.innerHTML = `<video src="${path}" controls style="max-width:100%; max-height:100%; outline:none; box-shadow:0 4px 10px rgba(0,0,0,0.1); border-radius:8px;"></video>`;
+            } else if (['mp3', 'wav'].includes(extLc)) {
+                container.innerHTML = `<audio src="${path}" controls style="width:80%; outline:none;"></audio>`;
+            } else if (extLc === 'txt') {
+                container.innerHTML = `<iframe src="${path}" style="width:100%; height:100%; border:none; background:white;"></iframe>`;
+            } else {
+                container.innerHTML = `<div style="text-align:center; color:#64748B;">No preview available for this file type.<br>Please download to view.</div>`;
+            }
+        }
+
         window.onclick = function(e) {
-            if (e.target.classList.contains('modal-overlay')) closeModal();
+            if (e.target.classList.contains('modal-overlay')) {
+                e.target.style.display = "none";
+            }
+            if (!e.target.closest('.menu-container')) {
+                var allMenus = document.querySelectorAll('.dropdown-menu');
+                allMenus.forEach(m => m.classList.remove('show'));
+            }
         }
     </script>
 </body>

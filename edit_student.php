@@ -31,7 +31,14 @@ if (!$student) {
 if (isset($_POST['update_student'])) {
     $full_name = mysqli_real_escape_string($conn, $_POST['full_name']);
     $admission_no = mysqli_real_escape_string($conn, $_POST['admission_no']);
-    $class_year = mysqli_real_escape_string($conn, $_POST['class_year']);
+
+    // Combine Program + Year
+    $prog = mysqli_real_escape_string($conn, $_POST['program']);
+    $yr = mysqli_real_escape_string($conn, $_POST['year']);
+    $class_year = (!empty($yr)) ? "$prog $yr" : $prog;
+    if ($yr == "Graduated" || $prog == "Graduated") {
+        $status = "Graduated";
+    }
     $father_name = mysqli_real_escape_string($conn, $_POST['father_name']);
     $phone = mysqli_real_escape_string($conn, $_POST['phone']);
     $address = mysqli_real_escape_string($conn, $_POST['address']);
@@ -201,14 +208,43 @@ if (isset($_POST['update_student'])) {
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Program / Class</label>
-                            <select name="class_year" required>
-                                <option value="<?php echo htmlspecialchars($student['class_year']); ?>" selected><?php echo htmlspecialchars($student['class_year']); ?> (Current)</option>
-                                <option value="Hifz Class">Hifz Class</option>
-                                <option value="Al-Alim 1st Year">Al-Alim 1st Year</option>
-                                <option value="Al-Alim 2nd Year">Al-Alim 2nd Year</option>
-                                <option value="Al-Alim 3rd Year">Al-Alim 3rd Year</option>
-                                <option value="Al-Alim Final Year">Al-Alim Final Year</option>
+                            <label>Program</label>
+                            <?php
+                            $prog_res = mysqli_query($conn, "SELECT program_name FROM programs ORDER BY program_name ASC");
+                            ?>
+                            <select name="program" required>
+                                <option value="">Select Program</option>
+                                <?php
+                                while ($p = mysqli_fetch_assoc($prog_res)) {
+                                    $pName = $p['program_name'];
+                                    // Check if current class_year contains this program name
+                                    $selected = (strpos($student['class_year'], $pName) !== false) ? 'selected' : '';
+                                    echo "<option value='" . htmlspecialchars($pName) . "' $selected>" . htmlspecialchars($pName) . "</option>";
+                                }
+                                ?>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Year / Level</label>
+                            <select name="year">
+                                <option value="">Select Year (Optional)</option>
+                                <?php
+                                $years = [
+                                    "1st Year",
+                                    "2nd Year",
+                                    "3rd Year",
+                                    "4th Year",
+                                    "5th Year",
+                                    "6th Year",
+                                    "7th (Final Year)",
+                                    "Graduated"
+                                ];
+                                foreach ($years as $y) {
+                                    // Check if current class_year contains this year string
+                                    $sel = (strpos($student['class_year'], $y) !== false) ? 'selected' : '';
+                                    echo "<option value='$y' $sel>$y</option>";
+                                }
+                                ?>
                             </select>
                         </div>
                         <div class="form-group">

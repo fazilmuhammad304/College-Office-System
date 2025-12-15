@@ -337,65 +337,76 @@ $result_docs = mysqli_query($conn, $sql_docs);
             justify-content: space-between;
         }
 
-        .action-btn {
-            display: inline-flex;
+        /* --- MENU & LIST STYLES (New) --- */
+        .menu-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+        }
+
+        .menu-btn {
+            background: white;
+            border: 1px solid #E5E7EB;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            display: flex;
             align-items: center;
-            gap: 5px;
-            padding: 6px 12px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-weight: 600;
+            justify-content: center;
+            cursor: pointer;
+            color: #6B7280;
+            transition: 0.2s;
+        }
+
+        .menu-btn:hover {
+            color: #1F2937;
+            background: #F3F4F6;
+        }
+
+        .dropdown-menu {
+            position: absolute;
+            top: 35px;
+            right: 0;
+            background: white;
+            border: 1px solid #E5E7EB;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            width: 140px;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 20;
+        }
+
+        .dropdown-menu.show {
+            display: flex;
+        }
+
+        .dropdown-item {
+            padding: 8px 12px;
+            font-size: 13px;
+            color: #4B5563;
             text-decoration: none;
-            transition: all 0.2s;
-            border: 1px solid transparent;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: 0.2s;
+            cursor: pointer;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
         }
 
-        .btn-view {
-            background: #F0F9FF;
-            color: #0284C7;
-            border-color: #BAE6FD;
+        .dropdown-item:hover {
+            background: #FFF7ED;
+            color: #FB923C;
         }
 
-        .btn-view:hover {
-            background: #E0F2FE;
-            color: #0369A1;
-            border-color: #7DD3FC;
-        }
-
-        .btn-edit {
-            background: #FFFBEB;
-            color: #B45309;
-            border-color: #FDE68A;
-        }
-
-        .btn-edit:hover {
-            background: #FEF3C7;
-            color: #92400E;
-            border-color: #FCD34D;
-        }
-
-        .btn-get {
-            background: #F0FDF4;
-            color: #15803D;
-            border-color: #BBF7D0;
-        }
-
-        .btn-get:hover {
-            background: #DCFCE7;
-            color: #166534;
-            border-color: #86EFAC;
-        }
-
-        .btn-del {
+        .dropdown-item.del:hover {
             background: #FEF2F2;
-            color: #DC2626;
-            border-color: #FECACA;
-        }
-
-        .btn-del:hover {
-            background: #FEE2E2;
-            color: #B91C1C;
-            border-color: #FCA5A5;
+            color: #EF4444;
         }
 
         /* Modals */
@@ -548,18 +559,31 @@ $result_docs = mysqli_query($conn, $sql_docs);
                             }
                         ?>
                             <div class="file-card">
+                                <div class="menu-container">
+                                    <div class="menu-btn" onclick="toggleMenu('menu-<?php echo $doc['doc_id']; ?>', event)">
+                                        <i class="fa-solid fa-ellipsis-vertical"></i>
+                                    </div>
+                                    <div class="dropdown-menu" id="menu-<?php echo $doc['doc_id']; ?>">
+                                        <span class="dropdown-item" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')">
+                                            <i class="fa-regular fa-eye"></i> View
+                                        </span>
+                                        <span class="dropdown-item" onclick="openEditModal('<?php echo $doc['doc_id']; ?>', '<?php echo addslashes($doc['title']); ?>', '<?php echo $doc['category']; ?>')">
+                                            <i class="fa-solid fa-pen"></i> Edit
+                                        </span>
+                                        <a href="uploads/<?php echo $doc['file_path']; ?>" download class="dropdown-item">
+                                            <i class="fa-solid fa-download"></i> Download
+                                        </a>
+                                        <a href="documents.php?delete_id=<?php echo $doc['doc_id']; ?>&path=<?php echo $doc['file_path']; ?>" class="dropdown-item del" onclick="return confirm('Delete?')">
+                                            <i class="fa-solid fa-trash"></i> Delete
+                                        </a>
+                                    </div>
+                                </div>
+
                                 <div class="file-icon-box <?php echo $bg; ?>" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')">
                                     <i class="fa-regular <?php echo $icon; ?>"></i>
                                 </div>
                                 <div class="file-name" title="<?php echo $doc['title']; ?>"><?php echo $doc['title']; ?></div>
                                 <div class="file-meta"><span><?php echo $doc['file_size']; ?></span><span><?php echo $doc['category']; ?></span></div>
-
-                                <div class="file-actions" style="flex-wrap: wrap; justify-content: flex-start;">
-                                    <span class="action-btn btn-view" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')"><i class="fa-regular fa-eye"></i> View</span>
-                                    <span class="action-btn btn-edit" onclick="openEditModal('<?php echo $doc['doc_id']; ?>', '<?php echo addslashes($doc['title']); ?>', '<?php echo $doc['category']; ?>')"><i class="fa-solid fa-pen"></i> Edit</span>
-                                    <a href="uploads/<?php echo $doc['file_path']; ?>" download class="action-btn btn-get"><i class="fa-solid fa-download"></i> Get</a>
-                                    <a href="documents.php?delete_id=<?php echo $doc['doc_id']; ?>&path=<?php echo $doc['file_path']; ?>" class="action-btn btn-del" onclick="return confirm('Delete?')"><i class="fa-solid fa-trash"></i> Del</a>
-                                </div>
                             </div>
                         <?php endwhile; ?>
                     <?php else: ?>
@@ -695,9 +719,29 @@ $result_docs = mysqli_query($conn, $sql_docs);
             }
         }
 
+        function toggleMenu(id, event) {
+            event.stopPropagation();
+            var menu = document.getElementById(id);
+            var isVisible = menu.classList.contains('show');
+
+            // Hide all other menus
+            var allMenus = document.querySelectorAll('.dropdown-menu');
+            allMenus.forEach(m => m.classList.remove('show'));
+
+            if (!isVisible) {
+                menu.classList.add('show');
+            }
+        }
+
         window.onclick = function(e) {
+            // Close Modals
             if (e.target.classList.contains('modal-overlay')) {
                 e.target.style.display = "none";
+            }
+            // Close Menus
+            if (!e.target.closest('.menu-container')) {
+                var allMenus = document.querySelectorAll('.dropdown-menu');
+                allMenus.forEach(m => m.classList.remove('show'));
             }
         }
     </script>

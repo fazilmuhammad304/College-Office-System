@@ -296,11 +296,16 @@ if (isset($_POST['save_student'])) {
                             </div>
                             <div class="form-group">
                                 <label>Program / Course <span style="color:red">*</span></label>
+                                <?php
+                                $prog_res = mysqli_query($conn, "SELECT program_name FROM programs ORDER BY program_name ASC");
+                                ?>
                                 <select name="program" class="form-select" required>
                                     <option value="">Select Program</option>
-                                    <option value="Hifz Class">Hifz Class</option>
-                                    <option value="Al-Alim">Al-Alim</option>
-                                    <option value="Al-Alimah">Al-Alimah</option>
+                                    <?php
+                                    while ($p = mysqli_fetch_assoc($prog_res)) {
+                                        echo "<option value='" . htmlspecialchars($p['program_name']) . "'>" . htmlspecialchars($p['program_name']) . "</option>";
+                                    }
+                                    ?>
                                 </select>
                             </div>
                             <div class="form-group">
@@ -310,7 +315,10 @@ if (isset($_POST['save_student'])) {
                                     <option value="1st Year">1st Year</option>
                                     <option value="2nd Year">2nd Year</option>
                                     <option value="3rd Year">3rd Year</option>
-                                    <option value="Final Year">Final Year</option>
+                                    <option value="4th Year">4th Year</option>
+                                    <option value="5th Year">5th Year</option>
+                                    <option value="6th Year">6th Year</option>
+                                    <option value="7th (Final Year)">7th (Final Year)</option>
                                 </select>
                             </div>
                         </div>
