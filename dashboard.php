@@ -2,6 +2,9 @@
 session_start();
 include 'db_conn.php';
 
+// --- TIMEZONE FIX ---
+date_default_timezone_set('Asia/Colombo');
+
 // 1. LOGIN CHECK
 if (!isset($_SESSION['user_id']) && !isset($_SESSION['username'])) {
     header("Location: login.php");
@@ -18,7 +21,7 @@ $student_result = mysqli_query($conn, $student_query);
 $student_data = mysqli_fetch_assoc($student_result);
 $total_students = isset($student_data['total']) ? intval($student_data['total']) : 0;
 
-// B. Attendance Today
+// B. Attendance Today (Uses Correct Timezone now)
 $today = date('Y-m-d');
 $att_query = "SELECT COUNT(*) as present_count FROM attendance WHERE date = '$today' AND status = 'Present'";
 $att_result = mysqli_query($conn, $att_query);
@@ -39,7 +42,6 @@ $total_docs = isset($doc_data['total']) ? intval($doc_data['total']) : 0;
 // ---------------------------------------------------------
 // E. DYNAMIC PROGRAMS COUNT
 // ---------------------------------------------------------
-// 'programs' டேபிளில் இருந்து எண்ணிக்கையை எடுக்கிறது
 $prog_query = "SELECT COUNT(*) as total FROM programs";
 $prog_result = mysqli_query($conn, $prog_query);
 
@@ -51,15 +53,10 @@ if ($prog_result) {
 }
 
 // ---------------------------------------------------------
-// 2. RECENT ACTIVITIES (FIXED LOGIC)
+// 2. RECENT ACTIVITIES
 // ---------------------------------------------------------
-// 'INTERVAL 1 DAY' நீக்கப்பட்டுள்ளது. இப்போது கடைசி 5 பதிவுகளை காட்டும்.
-
-// Get last 5 New Students
-$recent_students = mysqli_query($conn, "SELECT full_name, class_year, created_at FROM students ORDER BY created_at DESC LIMIT 5");
-
-// Get last 5 Uploaded Docs
-$recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM documents ORDER BY uploaded_at DESC LIMIT 5");
+$recent_students = mysqli_query($conn, "SELECT full_name, class_year, created_at FROM students WHERE created_at >= NOW() - INTERVAL 1 DAY ORDER BY created_at DESC");
+$recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM documents WHERE uploaded_at >= NOW() - INTERVAL 1 DAY ORDER BY uploaded_at DESC");
 ?>
 
 <!DOCTYPE html>
@@ -317,7 +314,7 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
                     <?php endif; ?>
 
                     <?php if (mysqli_num_rows($recent_students) == 0 && mysqli_num_rows($recent_docs) == 0) { ?>
-                        <li style="text-align:center; color:#9CA3AF; padding:20px;">No recent activities found.</li>
+                        <li style="text-align:center; color:#9CA3AF; padding:20px;">No recent activities.</li>
                     <?php } ?>
                 </ul>
             </div>
