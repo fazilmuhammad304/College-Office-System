@@ -22,15 +22,15 @@
             <i class="fa-solid fa-user-graduate"></i> Students
         </a>
 
-        <a href="#" class="menu-item <?php if ($page == 'teachers') {
-                                            echo 'active';
-                                        } ?>">
+        <a href="teachers.php" class="menu-item <?php if ($page == 'teachers') {
+                                                    echo 'active';
+                                                } ?>">
             <i class="fa-solid fa-chalkboard-user"></i> Teachers
         </a>
 
-        <a href="#" class="menu-item <?php if ($page == 'staff') {
-                                            echo 'active';
-                                        } ?>">
+        <a href="staff.php" class="menu-item <?php if ($page == 'staff') {
+                                                    echo 'active';
+                                                } ?>">
             <i class="fa-solid fa-users"></i> Staff
         </a>
 

@@ -37,25 +37,29 @@ $doc_data = mysqli_fetch_assoc(mysqli_query($conn, $doc_query));
 $total_docs = isset($doc_data['total']) ? intval($doc_data['total']) : 0;
 
 // ---------------------------------------------------------
-// E. [UPDATED] DYNAMIC PROGRAMS COUNT
+// E. DYNAMIC PROGRAMS COUNT
 // ---------------------------------------------------------
-// This now counts from the 'programs' table, so it includes "Pending" courses too.
+// 'programs' டேபிளில் இருந்து எண்ணிக்கையை எடுக்கிறது
 $prog_query = "SELECT COUNT(*) as total FROM programs";
 $prog_result = mysqli_query($conn, $prog_query);
 
-// If table exists, get count. If not, default to 0.
 if ($prog_result) {
     $prog_data = mysqli_fetch_assoc($prog_result);
     $total_programs = $prog_data['total'];
 } else {
-    $total_programs = 0; // Fallback if table doesn't exist
+    $total_programs = 0;
 }
 
 // ---------------------------------------------------------
-// 2. RECENT ACTIVITIES
+// 2. RECENT ACTIVITIES (FIXED LOGIC)
 // ---------------------------------------------------------
-$recent_students = mysqli_query($conn, "SELECT full_name, class_year, created_at FROM students WHERE created_at >= NOW() - INTERVAL 1 DAY ORDER BY created_at DESC");
-$recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM documents WHERE uploaded_at >= NOW() - INTERVAL 1 DAY ORDER BY uploaded_at DESC");
+// 'INTERVAL 1 DAY' நீக்கப்பட்டுள்ளது. இப்போது கடைசி 5 பதிவுகளை காட்டும்.
+
+// Get last 5 New Students
+$recent_students = mysqli_query($conn, "SELECT full_name, class_year, created_at FROM students ORDER BY created_at DESC LIMIT 5");
+
+// Get last 5 Uploaded Docs
+$recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM documents ORDER BY uploaded_at DESC LIMIT 5");
 ?>
 
 <!DOCTYPE html>
@@ -313,7 +317,7 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
                     <?php endif; ?>
 
                     <?php if (mysqli_num_rows($recent_students) == 0 && mysqli_num_rows($recent_docs) == 0) { ?>
-                        <li style="text-align:center; color:#9CA3AF; padding:20px;">No recent activities.</li>
+                        <li style="text-align:center; color:#9CA3AF; padding:20px;">No recent activities found.</li>
                     <?php } ?>
                 </ul>
             </div>

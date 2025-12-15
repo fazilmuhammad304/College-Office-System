@@ -10,26 +10,40 @@ if (!isset($_SESSION['user_id']) && !isset($_SESSION['username'])) {
 
 $message = "";
 
-// 2. அட்டெண்டன்ஸ் சேவ் செய்தல்
+// 2. அட்டெண்டன்ஸ் சேவ் செய்தல் (SERVER-SIDE PIN CHECK)
 if (isset($_POST['save_attendance'])) {
-    $date = $_POST['attendance_date'];
 
-    if (!empty($_POST['status'])) {
-        foreach ($_POST['status'] as $student_id => $status_val) {
-            $check_sql = "SELECT * FROM attendance WHERE student_id = '$student_id' AND date = '$date'";
-            $check_result = mysqli_query($conn, $check_sql);
+    // --- [SECURITY FIX START] ---
+    $submitted_pin = $_POST['security_pin']; // மோடலில் இருந்து வந்த PIN
+    $valid_pin = "1234"; // இங்கு பாதுகாப்பான PIN-ஐ மாற்றிக்கொள்ளவும்
 
-            if (mysqli_num_rows($check_result) > 0) {
-                $sql = "UPDATE attendance SET status = '$status_val' WHERE student_id = '$student_id' AND date = '$date'";
-            } else {
-                $sql = "INSERT INTO attendance (student_id, date, status) VALUES ('$student_id', '$date', '$status_val')";
-            }
-            mysqli_query($conn, $sql);
-        }
-        $message = "<div class='alert success'><i class='fa-solid fa-lock'></i> Verified & Saved Successfully for <b>" . date('d M Y', strtotime($date)) . "</b></div>";
+    if ($submitted_pin !== $valid_pin) {
+        $message = "<div class='alert error'><i class='fa-solid fa-triangle-exclamation'></i> Incorrect PIN! Attendance not saved.</div>";
     } else {
-        $message = "<div class='alert error'>No students selected!</div>";
+        // PIN சரியாக இருந்தால் மட்டுமே சேவ் செய்யப்படும்
+        $date = $_POST['attendance_date'];
+
+        if (!empty($_POST['status'])) {
+            foreach ($_POST['status'] as $student_id => $status_val) {
+                $student_id = intval($student_id); // Security: Force Integer
+                $status_val = mysqli_real_escape_string($conn, $status_val); // Security: Escape String
+
+                $check_sql = "SELECT * FROM attendance WHERE student_id = '$student_id' AND date = '$date'";
+                $check_result = mysqli_query($conn, $check_sql);
+
+                if (mysqli_num_rows($check_result) > 0) {
+                    $sql = "UPDATE attendance SET status = '$status_val' WHERE student_id = '$student_id' AND date = '$date'";
+                } else {
+                    $sql = "INSERT INTO attendance (student_id, date, status) VALUES ('$student_id', '$date', '$status_val')";
+                }
+                mysqli_query($conn, $sql);
+            }
+            $message = "<div class='alert success'><i class='fa-solid fa-lock'></i> Verified & Saved Successfully for <b>" . date('d M Y', strtotime($date)) . "</b></div>";
+        } else {
+            $message = "<div class='alert error'>No students selected!</div>";
+        }
     }
+    // --- [SECURITY FIX END] ---
 }
 
 // 3. ஃபில்டர் லாஜிக்
@@ -38,7 +52,8 @@ $selected_date = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
 
 $query = "SELECT * FROM students WHERE status='Active'";
 if ($filter_class != '' && $filter_class != 'All') {
-    $query .= " AND class_year = '$filter_class'";
+    $class_safe = mysqli_real_escape_string($conn, $filter_class);
+    $query .= " AND class_year = '$class_safe'";
 }
 $query .= " ORDER BY admission_no ASC";
 $students = mysqli_query($conn, $query);
@@ -374,9 +389,15 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
                         <label>Filter by Program</label>
                         <select name="class_year" class="filter-input">
                             <option value="All">All Programs</option>
-                            <option value="Hifz Class" <?php if ($filter_class == 'Hifz Class') echo 'selected'; ?>>Hifz Class</option>
-                            <option value="Al-Alim 1st Year" <?php if ($filter_class == 'Al-Alim 1st Year') echo 'selected'; ?>>Al-Alim 1st Year</option>
-                            <option value="Al-Alim 2nd Year" <?php if ($filter_class == 'Al-Alim 2nd Year') echo 'selected'; ?>>Al-Alim 2nd Year</option>
+                            <?php
+                            // Dynamic Program Fetching for Filter
+                            $prog_res = mysqli_query($conn, "SELECT program_name FROM programs");
+                            while ($prog = mysqli_fetch_assoc($prog_res)) {
+                                $pName = $prog['program_name'];
+                                $sel = ($filter_class == $pName) ? 'selected' : '';
+                                echo "<option value='$pName' $sel>$pName</option>";
+                            }
+                            ?>
                         </select>
                     </div>
                     <button type="submit" class="btn-load">
@@ -387,6 +408,8 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
 
             <form method="POST" action="" id="attForm">
                 <input type="hidden" name="attendance_date" value="<?php echo $selected_date; ?>">
+
+                <input type="hidden" name="security_pin" id="hiddenPin" value="">
 
                 <?php if (mysqli_num_rows($students) > 0) { ?>
 
@@ -484,7 +507,7 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
                 <button onclick="closeModal()" style="background:#F3F4F6; color:#4B5563; border:none; padding:10px; flex:1; border-radius:8px; cursor:pointer;">Cancel</button>
                 <button onclick="verifyPin()" class="btn-confirm">Verify & Save</button>
             </div>
-            <p id="errorMsg" style="color:red; font-size:12px; margin-top:10px; display:none;">Incorrect PIN!</p>
+            <p id="errorMsg" style="color:red; font-size:12px; margin-top:10px; display:none;">Please enter PIN</p>
         </div>
     </div>
 
@@ -496,9 +519,10 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
             });
         }
 
-        // --- SECURITY MODAL LOGIC ---
+        // --- SECURITY MODAL LOGIC (UPDATED) ---
         const modal = document.getElementById('securityModal');
         const pinInput = document.getElementById('adminPin');
+        const hiddenPinInput = document.getElementById('hiddenPin');
         const errorMsg = document.getElementById('errorMsg');
 
         function openSecurityModal() {
@@ -513,15 +537,15 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
         }
 
         function verifyPin() {
-            // 🔥 CHANGE PIN HERE (தற்போதைய பின்: 1234) 🔥
-            const correctPin = "1234";
-
-            if (pinInput.value === correctPin) {
-                document.getElementById('realSubmitBtn').click(); // Submit Form
-            } else {
+            if (pinInput.value.trim() === "") {
+                errorMsg.innerText = "Please enter a PIN";
                 errorMsg.style.display = 'block';
-                pinInput.style.borderColor = 'red';
+                return;
             }
+
+            // JavaScript-ல் சரிபார்க்காமல், PHP-க்கு அனுப்புகிறோம்
+            hiddenPinInput.value = pinInput.value;
+            document.getElementById('realSubmitBtn').click(); // Submit Form
         }
     </script>
 

@@ -2,15 +2,15 @@
 session_start();
 include 'db_conn.php';
 
-// 1. SECURITY CHECK
-if (!isset($_SESSION['user_id'])) {
+// 1. பாதுகாப்பு: லாகின் செய்யவில்லை என்றால் வெளியே அனுப்பு
+if (!isset($_SESSION['user_id']) && !isset($_SESSION['username'])) {
     header("Location: login.php");
     exit();
 }
 
 $message = "";
 
-// 2. HANDLE FORM SUBMISSION
+// 2. சேவ் பட்டன் அழுத்தப்பட்டால்
 if (isset($_POST['save_student'])) {
     // A. Personal & Family Details
     $admission_no = mysqli_real_escape_string($conn, $_POST['admission_no']);
@@ -31,7 +31,14 @@ if (isset($_POST['save_student'])) {
     // B. Academic Details (Combine Program + Year)
     $program = $_POST['program'];
     $year = $_POST['year'];
-    $class_year = "$program $year";
+
+    // கோர்ஸ் மற்றும் வருடத்தை இணைத்தல் (எ.கா: "Hifz Class 1st Year")
+    // வருடம் தேர்ந்தெடுக்கப்படவில்லை என்றால் கோர்ஸ் பெயர் மட்டும் வரும்
+    if (!empty($year)) {
+        $class_year = "$program $year";
+    } else {
+        $class_year = $program;
+    }
 
     // C. Handle Student Photo
     $photo = $_FILES['photo']['name'];
@@ -54,14 +61,23 @@ if (isset($_POST['save_student'])) {
             if (!empty($_FILES[$input_name]['name'])) {
                 $file_name = $_FILES[$input_name]['name'];
                 $ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
-                $new_name = uniqid() . "_$input_name." . $ext;
-                $file_size = number_format($_FILES[$input_name]['size'] / 1024, 2) . ' KB';
 
-                if (move_uploaded_file($_FILES[$input_name]['tmp_name'], "uploads/" . $new_name)) {
-                    // Save to Documents Table linked to this student
-                    $doc_sql = "INSERT INTO documents (title, category, file_path, file_type, file_size, student_id) 
-                                VALUES ('$doc_title', 'Student File', '$new_name', '$ext', '$file_size', '$student_id')";
-                    mysqli_query($conn, $doc_sql);
+                // பாதுகாப்பான ஃபைல் வகைகளை மட்டும் அனுமதித்தல் (Security Fix)
+                $allowed_types = ['pdf', 'jpg', 'jpeg', 'png', 'doc', 'docx'];
+
+                if (in_array($ext, $allowed_types)) {
+                    $new_name = uniqid() . "_$input_name." . $ext;
+
+                    // Size calculation
+                    $f_size = $_FILES[$input_name]['size'];
+                    $file_size = ($f_size >= 1048576) ? number_format($f_size / 1048576, 2) . ' MB' : number_format($f_size / 1024, 2) . ' KB';
+
+                    if (move_uploaded_file($_FILES[$input_name]['tmp_name'], "uploads/" . $new_name)) {
+                        // Save to Documents Table linked to this student
+                        $doc_sql = "INSERT INTO documents (title, category, file_path, file_type, file_size, student_id) 
+                                    VALUES ('$doc_title', 'Student File', '$new_name', '$ext', '$file_size', '$student_id')";
+                        mysqli_query($conn, $doc_sql);
+                    }
                 }
             }
         }
@@ -71,6 +87,11 @@ if (isset($_POST['save_student'])) {
         $message = "<div class='alert error'>Error: " . mysqli_error($conn) . "</div>";
     }
 }
+
+// --- [FIX] FETCH PROGRAMS FOR DROPDOWN ---
+// Programs டேபிளில் இருந்து பெயர்களை எடுக்கிறோம்
+$prog_query = "SELECT program_name FROM programs ORDER BY program_name ASC";
+$prog_result = mysqli_query($conn, $prog_query);
 ?>
 
 <!DOCTYPE html>
@@ -294,31 +315,30 @@ if (isset($_POST['save_student'])) {
                                 <label>Date of Admission <span style="color:red">*</span></label>
                                 <input type="date" name="admission_date" class="form-input" required value="<?php echo date('Y-m-d'); ?>">
                             </div>
+
                             <div class="form-group">
                                 <label>Program / Course <span style="color:red">*</span></label>
-                                <?php
-                                $prog_res = mysqli_query($conn, "SELECT program_name FROM programs ORDER BY program_name ASC");
-                                ?>
                                 <select name="program" class="form-select" required>
                                     <option value="">Select Program</option>
                                     <?php
-                                    while ($p = mysqli_fetch_assoc($prog_res)) {
-                                        echo "<option value='" . htmlspecialchars($p['program_name']) . "'>" . htmlspecialchars($p['program_name']) . "</option>";
+                                    if (mysqli_num_rows($prog_result) > 0) {
+                                        while ($row = mysqli_fetch_assoc($prog_result)) {
+                                            echo "<option value='" . $row['program_name'] . "'>" . $row['program_name'] . "</option>";
+                                        }
                                     }
                                     ?>
                                 </select>
                             </div>
+
                             <div class="form-group">
-                                <label>Year / Level <span style="color:red">*</span></label>
-                                <select name="year" class="form-select" required>
+                                <label>Year / Level (Optional)</label>
+                                <select name="year" class="form-select">
                                     <option value="">Select Year</option>
                                     <option value="1st Year">1st Year</option>
                                     <option value="2nd Year">2nd Year</option>
                                     <option value="3rd Year">3rd Year</option>
                                     <option value="4th Year">4th Year</option>
-                                    <option value="5th Year">5th Year</option>
-                                    <option value="6th Year">6th Year</option>
-                                    <option value="7th (Final Year)">7th (Final Year)</option>
+                                    <option value="Final Year">Final Year</option>
                                 </select>
                             </div>
                         </div>
@@ -404,19 +424,19 @@ if (isset($_POST['save_student'])) {
                             </div>
                             <div class="doc-upload-box">
                                 <span class="doc-label">Birth Certificate</span>
-                                <input type="file" name="birth_cert" class="doc-input" accept=".pdf,.jpg,.png">
+                                <input type="file" name="birth_cert" class="doc-input" accept=".pdf,.jpg,.png,.doc,.docx">
                             </div>
                             <div class="doc-upload-box">
                                 <span class="doc-label">ID Copy / NIC</span>
-                                <input type="file" name="nic_copy" class="doc-input" accept=".pdf,.jpg,.png">
+                                <input type="file" name="nic_copy" class="doc-input" accept=".pdf,.jpg,.png,.doc,.docx">
                             </div>
                             <div class="doc-upload-box">
                                 <span class="doc-label">School Leaving Cert</span>
-                                <input type="file" name="leaving_cert" class="doc-input" accept=".pdf,.jpg,.png">
+                                <input type="file" name="leaving_cert" class="doc-input" accept=".pdf,.jpg,.png,.doc,.docx">
                             </div>
                             <div class="doc-upload-box">
                                 <span class="doc-label">Medical Report (If any)</span>
-                                <input type="file" name="medical_report" class="doc-input" accept=".pdf,.jpg,.png">
+                                <input type="file" name="medical_report" class="doc-input" accept=".pdf,.jpg,.png,.doc,.docx">
                             </div>
                         </div>
 

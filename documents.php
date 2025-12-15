@@ -34,19 +34,26 @@ if (isset($_POST['create_category'])) {
 
 // --- ACTION 2: RENAME CATEGORY ---
 if (isset($_POST['rename_category'])) {
-    $cat_id = $_POST['rename_cat_id'];
+    // Sanitize inputs
+    $cat_id = mysqli_real_escape_string($conn, $_POST['rename_cat_id']);
     $old_name = mysqli_real_escape_string($conn, $_POST['old_cat_name']);
     $new_name = mysqli_real_escape_string($conn, $_POST['new_cat_name']);
 
-    // 1. Update Category Table
-    $update_cat = "UPDATE categories SET name='$new_name' WHERE id='$cat_id'";
-    if (mysqli_query($conn, $update_cat)) {
-        // 2. Update All Documents in this Folder
-        $update_docs = "UPDATE documents SET category='$new_name' WHERE category='$old_name'";
-        mysqli_query($conn, $update_docs);
-        $message = "<div class='alert success'>Folder renamed and files updated!</div>";
+    // Check if new name already exists
+    $check = mysqli_query($conn, "SELECT * FROM categories WHERE name = '$new_name' AND id != '$cat_id'");
+    if (mysqli_num_rows($check) > 0) {
+        $message = "<div class='alert error'>A folder with that name already exists!</div>";
     } else {
-        $message = "<div class='alert error'>Error updating folder.</div>";
+        // 1. Update Category Table
+        $update_cat = "UPDATE categories SET name='$new_name' WHERE id='$cat_id'";
+        if (mysqli_query($conn, $update_cat)) {
+            // 2. Update All Documents in this Folder
+            $update_docs = "UPDATE documents SET category='$new_name' WHERE category='$old_name'";
+            mysqli_query($conn, $update_docs);
+            $message = "<div class='alert success'>Folder renamed and files updated!</div>";
+        } else {
+            $message = "<div class='alert error'>Error updating folder.</div>";
+        }
     }
 }
 
@@ -56,8 +63,9 @@ if (isset($_GET['del_cat_id'])) {
         die("Access Denied");
     }
 
-    $del_id = $_GET['del_cat_id'];
-    $cat_name = $_GET['cat_name'];
+    // Sanitize inputs
+    $del_id = mysqli_real_escape_string($conn, $_GET['del_cat_id']);
+    $cat_name = mysqli_real_escape_string($conn, $_GET['cat_name']);
 
     // Check if folder is empty
     $check_files = mysqli_query($conn, "SELECT * FROM documents WHERE category='$cat_name'");
@@ -73,37 +81,60 @@ if (isset($_GET['del_cat_id'])) {
 if (isset($_POST['upload_file'])) {
     $title = mysqli_real_escape_string($conn, $_POST['title']);
     $category = mysqli_real_escape_string($conn, $_POST['category']);
+
     $filename = $_FILES['file']['name'];
     $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
     $filesize = $_FILES['file']['size'];
     $size_text = ($filesize >= 1048576) ? number_format($filesize / 1048576, 2) . ' MB' : number_format($filesize / 1024, 2) . ' KB';
     $new_filename = uniqid() . "." . $ext;
 
-    if (move_uploaded_file($_FILES['file']['tmp_name'], "uploads/" . $new_filename)) {
-        $sql = "INSERT INTO documents (title, category, file_path, file_type, file_size, is_starred) 
-                VALUES ('$title', '$category', '$new_filename', '$ext', '$size_text', 0)";
-        mysqli_query($conn, $sql);
-        $message = "<div class='alert success'>File Uploaded!</div>";
+    // SECURITY: Allowed File Extensions List
+    $allowed_exts = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif', 'txt', 'mp4', 'mp3', 'wav', 'webm', 'ogg'];
+
+    if (in_array($ext, $allowed_exts)) {
+        if (move_uploaded_file($_FILES['file']['tmp_name'], "uploads/" . $new_filename)) {
+            $sql = "INSERT INTO documents (title, category, file_path, file_type, file_size, is_starred) 
+                    VALUES ('$title', '$category', '$new_filename', '$ext', '$size_text', 0)";
+            mysqli_query($conn, $sql);
+            $message = "<div class='alert success'>File Uploaded!</div>";
+        } else {
+            $message = "<div class='alert error'>Failed to move uploaded file. Check folder permissions.</div>";
+        }
+    } else {
+        $message = "<div class='alert error'>Invalid file type! Allowed: PDF, Office Docs, Images, Media.</div>";
     }
 }
 
 // --- ACTION 5: EDIT FILE ---
 if (isset($_POST['edit_file'])) {
-    $doc_id = $_POST['edit_doc_id'];
+    $doc_id = mysqli_real_escape_string($conn, $_POST['edit_doc_id']);
     $new_title = mysqli_real_escape_string($conn, $_POST['edit_title']);
     $new_cat = mysqli_real_escape_string($conn, $_POST['edit_category']);
+
     mysqli_query($conn, "UPDATE documents SET title='$new_title', category='$new_cat' WHERE doc_id='$doc_id'");
     $message = "<div class='alert success'>Document Updated!</div>";
 }
 
 // --- ACTION 6: DELETE FILE ---
 if (isset($_GET['delete_id'])) {
-    $id = $_GET['delete_id'];
-    $path = $_GET['path'];
-    mysqli_query($conn, "DELETE FROM documents WHERE doc_id='$id'");
-    if (file_exists("uploads/" . $path)) {
-        unlink("uploads/" . $path);
+    $id = mysqli_real_escape_string($conn, $_GET['delete_id']);
+
+    // SECURITY: Fetch path from DB instead of GET to prevent Path Traversal
+    $query = mysqli_query($conn, "SELECT file_path FROM documents WHERE doc_id='$id'");
+    $file = mysqli_fetch_assoc($query);
+
+    if ($file) {
+        $path = "uploads/" . $file['file_path'];
+
+        // Delete physical file
+        if (file_exists($path)) {
+            unlink($path);
+        }
+
+        // Delete DB Record
+        mysqli_query($conn, "DELETE FROM documents WHERE doc_id='$id'");
     }
+
     header("Location: documents.php");
     exit();
 }
@@ -122,12 +153,17 @@ $result_folders = mysqli_query($conn, $folder_sql);
 
 // Fetch Docs
 $sql_docs = "SELECT * FROM documents WHERE 1=1";
+
+// SECURITY: Sanitize filter inputs
 if ($current_folder != 'All') {
-    $sql_docs .= " AND category = '$current_folder'";
+    $safe_folder = mysqli_real_escape_string($conn, $current_folder);
+    $sql_docs .= " AND category = '$safe_folder'";
 }
 if ($search_query != '') {
-    $sql_docs .= " AND title LIKE '%$search_query%'";
+    $safe_search = mysqli_real_escape_string($conn, $search_query);
+    $sql_docs .= " AND title LIKE '%$safe_search%'";
 }
+
 $sql_docs .= " ORDER BY is_starred DESC, doc_id DESC";
 $result_docs = mysqli_query($conn, $sql_docs);
 ?>
@@ -573,7 +609,7 @@ $result_docs = mysqli_query($conn, $sql_docs);
                                         <a href="uploads/<?php echo $doc['file_path']; ?>" download class="dropdown-item">
                                             <i class="fa-solid fa-download"></i> Download
                                         </a>
-                                        <a href="documents.php?delete_id=<?php echo $doc['doc_id']; ?>&path=<?php echo $doc['file_path']; ?>" class="dropdown-item del" onclick="return confirm('Delete?')">
+                                        <a href="documents.php?delete_id=<?php echo $doc['doc_id']; ?>" class="dropdown-item del" onclick="return confirm('Delete?')">
                                             <i class="fa-solid fa-trash"></i> Delete
                                         </a>
                                     </div>

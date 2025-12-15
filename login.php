@@ -18,8 +18,6 @@ if (isset($_POST['login_btn'])) {
         $row = mysqli_fetch_assoc($result);
 
         // 3. Verify Password
-        // Note: In Step 2 (Database), we inserted a HASHED password. 
-        // password_verify() checks if 'admin123' matches that hash.
         if (password_verify($password, $row['password'])) {
 
             // Success: Set Session Variables
@@ -45,7 +43,7 @@ if (isset($_POST['login_btn'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login | Office Admin Portal</title>
+    <title>Login | Faizanul Madeena Arabic College</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <style>
@@ -60,6 +58,24 @@ if (isset($_POST['login_btn'])) {
             font-size: 14px;
             border: 1px solid #FECACA;
         }
+
+        /* --- CUSTOM LOGO STYLES (Overrides style.css) --- */
+        .logo {
+            width: 140px !important;
+            /* Bigger Size */
+            height: auto !important;
+            /* Maintain Aspect Ratio */
+            border-radius: 0 !important;
+            /* Remove Circle */
+            border: none !important;
+            /* Remove Border Line */
+            object-fit: contain;
+        }
+
+        .card-header h1 {
+            font-size: 24px;
+            line-height: 1.3;
+        }
     </style>
 </head>
 
@@ -70,10 +86,10 @@ if (isset($_POST['login_btn'])) {
 
             <div class="card-header">
                 <div class="logo-container">
-                    <img src="https://via.placeholder.com/100x100?text=Logo" alt="Logo" class="logo">
+                    <img src="logo.png" alt="College Logo" class="logo">
                 </div>
-                <h1>Office Admin Portal</h1>
-                <p>Secure Data Management System</p>
+                <h1>Faizanul Madeena Arabic College</h1>
+                <p>Office Admin Portal</p>
             </div>
 
             <div class="card-body">

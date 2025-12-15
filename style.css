@@ -46,16 +46,19 @@ body {
 }
 
 .logo-container {
-    margin-bottom: 15px;
+    margin-bottom: 30px;
 }
 
 .logo {
-    width: 80px;
-    height: 80px;
+    width: 150px;
+    height: 150px;
     border-radius: 50%;
-    border: 3px solid rgba(255, 255, 255, 0.3);
-    /* Subtle border around logo */
+    border: 3px solid rgba(255, 255, 255, 0.5);
+    /* Slightly brighter border */
+    background-color: white;
     object-fit: cover;
+    /* Fills the circle completely */
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
 }
 
 .card-header h1 {
