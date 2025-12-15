@@ -2,7 +2,7 @@
 session_start();
 include 'db_conn.php';
 
-// 1. லாகின் செக்
+// 1. LOGIN CHECK
 if (!isset($_SESSION['user_id']) && !isset($_SESSION['username'])) {
     header("Location: login.php");
     exit();
@@ -10,23 +10,22 @@ if (!isset($_SESSION['user_id']) && !isset($_SESSION['username'])) {
 
 $message = "";
 
-// 2. அட்டெண்டன்ஸ் சேவ் செய்தல் (SERVER-SIDE PIN CHECK)
+// 2. SAVE ATTENDANCE (With Security PIN Check)
 if (isset($_POST['save_attendance'])) {
 
-    // --- [SECURITY FIX START] ---
-    $submitted_pin = $_POST['security_pin']; // மோடலில் இருந்து வந்த PIN
-    $valid_pin = "1234"; // இங்கு பாதுகாப்பான PIN-ஐ மாற்றிக்கொள்ளவும்
+    // --- [SECURITY PIN CHECK] ---
+    $submitted_pin = $_POST['security_pin'];
+    $valid_pin = "1234"; // Update your PIN here
 
     if ($submitted_pin !== $valid_pin) {
         $message = "<div class='alert error'><i class='fa-solid fa-triangle-exclamation'></i> Incorrect PIN! Attendance not saved.</div>";
     } else {
-        // PIN சரியாக இருந்தால் மட்டுமே சேவ் செய்யப்படும்
         $date = $_POST['attendance_date'];
 
         if (!empty($_POST['status'])) {
             foreach ($_POST['status'] as $student_id => $status_val) {
-                $student_id = intval($student_id); // Security: Force Integer
-                $status_val = mysqli_real_escape_string($conn, $status_val); // Security: Escape String
+                $student_id = intval($student_id);
+                $status_val = mysqli_real_escape_string($conn, $status_val);
 
                 $check_sql = "SELECT * FROM attendance WHERE student_id = '$student_id' AND date = '$date'";
                 $check_result = mysqli_query($conn, $check_sql);
@@ -43,21 +42,76 @@ if (isset($_POST['save_attendance'])) {
             $message = "<div class='alert error'>No students selected!</div>";
         }
     }
-    // --- [SECURITY FIX END] ---
 }
 
-// 3. ஃபில்டர் லாஜிக்
-$filter_class = isset($_GET['class_year']) ? $_GET['class_year'] : 'All';
-$selected_date = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
+// 3. FILTER LOGIC & QUERY BUILDING
+$filter_program = isset($_GET['program']) ? $_GET['program'] : 'All';
+$filter_year    = isset($_GET['year']) ? $_GET['year'] : 'All';
+$selected_date  = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
 
-$query = "SELECT * FROM students WHERE status='Active'";
-if ($filter_class != '' && $filter_class != 'All') {
-    $class_safe = mysqli_real_escape_string($conn, $filter_class);
-    $query .= " AND class_year = '$class_safe'";
+// Build Dynamic SQL Conditions for Students
+// We use alias 's' for students table to avoid ambiguity with attendance table later
+$filter_conditions = "s.status='Active'";
+
+if ($filter_program != '' && $filter_program != 'All') {
+    $prog_safe = mysqli_real_escape_string($conn, $filter_program);
+    // FIX 1: Exact match OR Starts with "Program " (note the space) to avoid Al-Alim matching Al-Alimah
+    $filter_conditions .= " AND (s.class_year = '$prog_safe' OR s.class_year LIKE '$prog_safe %')";
 }
-$query .= " ORDER BY admission_no ASC";
+
+if ($filter_year != '' && $filter_year != 'All') {
+    $year_safe = mysqli_real_escape_string($conn, $filter_year);
+    $filter_conditions .= " AND s.class_year LIKE '%$year_safe%'";
+}
+
+// --- [NEW FEATURE] PERCENTAGE CALCULATIONS (FILTER AWARE) ---
+
+// A. Percentage for Selected Date (Applied Filter)
+// 1. Get Total Students matching the filter (Denominator)
+$active_count_query = mysqli_query($conn, "SELECT COUNT(*) as total FROM students s WHERE $filter_conditions");
+$active_count_data = mysqli_fetch_assoc($active_count_query);
+$total_filtered_students = $active_count_data['total'];
+
+// 2. Get Present Count for Selected Date matching the filter (Numerator)
+// We join tables so we only count attendance for students who match the Program/Year filter
+$present_count_query = mysqli_query($conn, "SELECT COUNT(*) as total FROM attendance a 
+                                            JOIN students s ON a.student_id = s.student_id 
+                                            WHERE a.date='$selected_date' AND a.status='Present' AND $filter_conditions");
+$present_count_data = mysqli_fetch_assoc($present_count_query);
+$present_on_date = $present_count_data['total'];
+
+// Calculation
+$date_percentage = ($total_filtered_students > 0) ? round(($present_on_date / $total_filtered_students) * 100, 1) : 0;
+
+
+// B. Average Percentage (Range: Selected Date to Today)
+$range_percentage = 0;
+if ($selected_date <= date('Y-m-d')) {
+    // 1. Count Total 'Present' records in range (Filtered)
+    $range_present_query = mysqli_query($conn, "SELECT COUNT(*) as total FROM attendance a 
+                                                JOIN students s ON a.student_id = s.student_id 
+                                                WHERE a.date >= '$selected_date' AND a.date <= CURDATE() 
+                                                AND a.status='Present' AND $filter_conditions");
+    $range_present_data = mysqli_fetch_assoc($range_present_query);
+    $total_range_present = $range_present_data['total'];
+
+    // 2. Count Total Attendance Records in range (Filtered)
+    $range_total_query = mysqli_query($conn, "SELECT COUNT(*) as total FROM attendance a 
+                                              JOIN students s ON a.student_id = s.student_id 
+                                              WHERE a.date >= '$selected_date' AND a.date <= CURDATE() 
+                                              AND $filter_conditions");
+    $range_total_data = mysqli_fetch_assoc($range_total_query);
+    $total_range_records = $range_total_data['total'];
+
+    // Calculation
+    $range_percentage = ($total_range_records > 0) ? round(($total_range_present / $total_range_records) * 100, 1) : 0;
+}
+
+// 4. FETCH STUDENTS FOR LIST (Using the same filter conditions)
+$query = "SELECT * FROM students s WHERE $filter_conditions ORDER BY s.admission_no ASC";
 $students = mysqli_query($conn, $query);
 
+// Check if attendance exists for the date to toggle button text
 $check_date_sql = "SELECT * FROM attendance WHERE date = '$selected_date' LIMIT 1";
 $is_existing = (mysqli_num_rows(mysqli_query($conn, $check_date_sql)) > 0);
 $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
@@ -128,6 +182,38 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
             gap: 8px;
         }
 
+        /* --- NEW STATS STYLES --- */
+        .stats-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .stat-box {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #E5E7EB;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 800;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #6B7280;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* --- TABLE STYLES --- */
         .quick-actions {
             display: flex;
             gap: 10px;
@@ -235,12 +321,6 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
             background: #FEE2E2;
             color: #991B1B;
             border-color: #DC2626;
-        }
-
-        .status-radio[value="Late"]:checked+.status-label {
-            background: #FFEDD5;
-            color: #9A3412;
-            border-color: #EA580C;
         }
 
         .status-radio[value="Holiday"]:checked+.status-label {
@@ -381,30 +461,58 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
 
             <form method="GET" action="">
                 <div class="filters-card">
+
                     <div class="filter-group">
                         <label>Select Date</label>
                         <input type="date" name="date" class="filter-input" value="<?php echo $selected_date; ?>">
                     </div>
+
                     <div class="filter-group">
                         <label>Filter by Program</label>
-                        <select name="class_year" class="filter-input">
+                        <select name="program" class="filter-input">
                             <option value="All">All Programs</option>
                             <?php
-                            // Dynamic Program Fetching for Filter
+                            // Dynamic Program Fetching
                             $prog_res = mysqli_query($conn, "SELECT program_name FROM programs");
                             while ($prog = mysqli_fetch_assoc($prog_res)) {
                                 $pName = $prog['program_name'];
-                                $sel = ($filter_class == $pName) ? 'selected' : '';
+                                $sel = ($filter_program == $pName) ? 'selected' : '';
                                 echo "<option value='$pName' $sel>$pName</option>";
                             }
                             ?>
                         </select>
                     </div>
+
+                    <div class="filter-group">
+                        <label>Filter by Year</label>
+                        <select name="year" class="filter-input">
+                            <option value="All" <?php if ($filter_year == 'All') echo 'selected'; ?>>All Years</option>
+                            <option value="1st Year" <?php if ($filter_year == '1st Year') echo 'selected'; ?>>1st Year</option>
+                            <option value="2nd Year" <?php if ($filter_year == '2nd Year') echo 'selected'; ?>>2nd Year</option>
+                            <option value="3rd Year" <?php if ($filter_year == '3rd Year') echo 'selected'; ?>>3rd Year</option>
+                            <option value="4th Year" <?php if ($filter_year == '4th Year') echo 'selected'; ?>>4th Year</option>
+                            <option value="5th Year" <?php if ($filter_year == '5th Year') echo 'selected'; ?>>5th Year</option>
+                            <option value="6th Year" <?php if ($filter_year == '6th Year') echo 'selected'; ?>>6th Year</option>
+                            <option value="Final Year" <?php if ($filter_year == 'Final Year') echo 'selected'; ?>>Final Year</option>
+                        </select>
+                    </div>
+
                     <button type="submit" class="btn-load">
                         <i class="fa-solid fa-filter"></i> Load List
                     </button>
                 </div>
             </form>
+
+            <div class="stats-row">
+                <div class="stat-box">
+                    <div class="stat-value" style="color: #059669;"><?php echo $date_percentage; ?>%</div>
+                    <div class="stat-label">On <?php echo date('d M', strtotime($selected_date)); ?></div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-value" style="color: #4F46E5;"><?php echo $range_percentage; ?>%</div>
+                    <div class="stat-label">Average (<?php echo date('d M', strtotime($selected_date)); ?> - Today)</div>
+                </div>
+            </div>
 
             <form method="POST" action="" id="attForm">
                 <input type="hidden" name="attendance_date" value="<?php echo $selected_date; ?>">
@@ -461,9 +569,6 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
                                                 <label title="Absent"><input type="radio" name="status[<?php echo $sid; ?>]" value="Absent" class="status-radio" <?php if ($status == 'Absent') echo 'checked'; ?>>
                                                     <div class="status-label">A</div>
                                                 </label>
-                                                <label title="Late"><input type="radio" name="status[<?php echo $sid; ?>]" value="Late" class="status-radio" <?php if ($status == 'Late') echo 'checked'; ?>>
-                                                    <div class="status-label">L</div>
-                                                </label>
                                                 <label title="Holiday"><input type="radio" name="status[<?php echo $sid; ?>]" value="Holiday" class="status-radio" <?php if ($status == 'Holiday') echo 'checked'; ?>>
                                                     <div class="status-label"><i class="fa-solid fa-umbrella-beach"></i></div>
                                                 </label>
@@ -507,7 +612,7 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
                 <button onclick="closeModal()" style="background:#F3F4F6; color:#4B5563; border:none; padding:10px; flex:1; border-radius:8px; cursor:pointer;">Cancel</button>
                 <button onclick="verifyPin()" class="btn-confirm">Verify & Save</button>
             </div>
-            <p id="errorMsg" style="color:red; font-size:12px; margin-top:10px; display:none;">Please enter PIN</p>
+            <p id="errorMsg" style="color:red; font-size:12px; margin-top:10px; display:none;">Please enter a PIN</p>
         </div>
     </div>
 
@@ -519,7 +624,7 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
             });
         }
 
-        // --- SECURITY MODAL LOGIC (UPDATED) ---
+        // --- SECURITY MODAL LOGIC ---
         const modal = document.getElementById('securityModal');
         const pinInput = document.getElementById('adminPin');
         const hiddenPinInput = document.getElementById('hiddenPin');
@@ -538,14 +643,12 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
 
         function verifyPin() {
             if (pinInput.value.trim() === "") {
-                errorMsg.innerText = "Please enter a PIN";
                 errorMsg.style.display = 'block';
                 return;
             }
-
-            // JavaScript-ல் சரிபார்க்காமல், PHP-க்கு அனுப்புகிறோம்
+            // Pass PIN to hidden input and submit form
             hiddenPinInput.value = pinInput.value;
-            document.getElementById('realSubmitBtn').click(); // Submit Form
+            document.getElementById('realSubmitBtn').click();
         }
     </script>
 
