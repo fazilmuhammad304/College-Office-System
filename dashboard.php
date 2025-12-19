@@ -21,9 +21,12 @@ $student_result = mysqli_query($conn, $student_query);
 $student_data = mysqli_fetch_assoc($student_result);
 $total_students = isset($student_data['total']) ? intval($student_data['total']) : 0;
 
-// B. Attendance Today (Uses Correct Timezone now)
+// B. Attendance Today (FIXED LOGIC)
 $today = date('Y-m-d');
-$att_query = "SELECT COUNT(*) as present_count FROM attendance WHERE date = '$today' AND status = 'Present'";
+
+// திருத்தம்: DISTINCT சேர்ப்பதன் மூலம் ஒரு மாணவரை ஒரு முறை மட்டுமே கணக்கிடும்.
+$att_query = "SELECT COUNT(DISTINCT student_id) as present_count FROM attendance WHERE date = '$today' AND status = 'Present'";
+
 $att_result = mysqli_query($conn, $att_query);
 $att_data = mysqli_fetch_assoc($att_result);
 $present_today = isset($att_data['present_count']) ? intval($att_data['present_count']) : 0;
@@ -32,7 +35,18 @@ $present_today = isset($att_data['present_count']) ? intval($att_data['present_c
 $active_students_query = "SELECT COUNT(*) as total FROM students WHERE status='Active'";
 $active_data = mysqli_fetch_assoc(mysqli_query($conn, $active_students_query));
 $active_count = $active_data['total'];
-$att_percentage = ($active_count > 0) ? round(($present_today / $active_count) * 100) : 0;
+
+// கணக்கீடு (Calculation)
+if ($active_count > 0) {
+    $att_percentage = round(($present_today / $active_count) * 100);
+} else {
+    $att_percentage = 0;
+}
+
+// பாதுகாப்பு: 100%க்கு மேல் போகாமல் தடுத்தல்
+if ($att_percentage > 100) {
+    $att_percentage = 100;
+}
 
 // D. Total Documents
 $doc_query = "SELECT COUNT(*) as total FROM documents";
@@ -264,7 +278,7 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
                         <div class="card-info">
                             <h3><?php echo $att_percentage; ?>%</h3>
                             <span>Attendance Today</span>
-                            <span class="card-subtext"><?php echo $present_today; ?> Present</span>
+                            <span class="card-subtext"><?php echo $present_today; ?> / <?php echo $active_count; ?> Present</span>
                         </div>
                     </div>
                 </a>

@@ -384,13 +384,22 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
                         if (mysqli_num_rows($result) > 0) {
                             while ($row = mysqli_fetch_assoc($result)) {
 
-                                // Photo Logic
+                                // --- [UPDATED] PHOTO DISPLAY LOGIC ---
+                                // Checks if it's a link (http) or a local file
                                 $photo_html = "";
                                 if (!empty($row['photo'])) {
-                                    $photo_html = "<img src='uploads/" . $row['photo'] . "'>";
+                                    $photo_path = $row['photo'];
+                                    if (strpos($photo_path, 'http') === 0) {
+                                        // Link (Google Drive) - No change
+                                        $photo_html = "<img src='" . $photo_path . "'>";
+                                    } else {
+                                        // Local file - Add uploads/
+                                        $photo_html = "<img src='uploads/" . $photo_path . "'>";
+                                    }
                                 } else {
                                     $photo_html = substr($row['full_name'], 0, 1);
                                 }
+                                // -------------------------------------
 
                                 // Status Logic
                                 $status_badge = "badge-active";

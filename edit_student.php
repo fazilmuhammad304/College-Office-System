@@ -331,9 +331,16 @@ if (isset($_POST['update_student'])) {
                             <input type="file" name="photo">
                         </div>
                         <?php if (!empty($student['photo'])) { ?>
+                            <?php
+                            $edit_photo = $student['photo'];
+                            // கூகுள் டிரைவ் லிங்க் ஆக இருந்தால் அப்படியே காட்டு, இல்லை என்றால் 'uploads/' சேர்
+                            if (strpos($edit_photo, 'http') !== 0) {
+                                $edit_photo = "uploads/" . $edit_photo;
+                            }
+                            ?>
                             <div style="text-align:center;">
                                 <label style="display:block; font-size:12px; margin-bottom:5px;">Current Photo</label>
-                                <img src="uploads/<?php echo htmlspecialchars($student['photo']); ?>" class="current-photo">
+                                <img src="<?php echo htmlspecialchars($edit_photo); ?>" class="current-photo">
                             </div>
                         <?php } ?>
                     </div>

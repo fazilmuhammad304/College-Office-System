@@ -163,6 +163,20 @@ if (!empty($student['dob'])) {
 
 $stu_docs = mysqli_query($conn, "SELECT * FROM documents WHERE student_id = '$student_id' ORDER BY doc_id DESC");
 $curr_class = $student['class_year'];
+
+// --- [UPDATED] PHOTO DISPLAY LOGIC ---
+$photo = "https://cdn-icons-png.flaticon.com/512/3135/3135715.png";
+if (!empty($student['photo'])) {
+    $temp_photo = $student['photo'];
+    // கூகுள் டிரைவ் லிங்க் ஆக இருந்தால் (starts with http), அப்படியே பயன்படுத்தவும்
+    if (strpos($temp_photo, 'http') === 0) {
+        $photo = $temp_photo;
+    } else {
+        // இல்லையென்றால் uploads ஃபோல்டரில் தேடவும்
+        $photo = "uploads/" . $temp_photo;
+    }
+}
+// -------------------------------------
 ?>
 
 <!DOCTYPE html>
@@ -363,6 +377,8 @@ $curr_class = $student['class_year'];
             font-size: 32px;
             margin-bottom: 15px;
             cursor: pointer;
+            text-decoration: none;
+            /* Make sure it doesn't look like a text link */
         }
 
         .file-name {
@@ -649,8 +665,9 @@ $curr_class = $student['class_year'];
 
                 <div class="profile-card">
                     <div class="profile-header-bg"></div>
-                    <?php $photo = !empty($student['photo']) ? "uploads/" . $student['photo'] : "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"; ?>
+
                     <img src="<?php echo $photo; ?>" class="profile-avatar">
+
                     <div style="padding: 15px 25px 30px;">
                         <h2 style="margin:10px 0 5px; font-size:20px;"><?php echo $student['full_name']; ?></h2>
                         <p style="color:#6B7280; font-size:14px; margin:0;"><?php echo $student['admission_no']; ?></p>
@@ -812,18 +829,34 @@ $curr_class = $student['class_year'];
                                         $bg = "#F5F3FF";
                                         $col = "#8B5CF6";
                                     }
+
+                                    // --- [UPDATED] DOCUMENT LINK LOGIC ---
+                                    $file_url = $doc['file_path'];
+                                    // Check if it's a direct URL (Google Drive) or local file
+                                    if (strpos($file_url, 'http') !== 0) {
+                                        $file_url = "uploads/" . $file_url;
+                                    }
+                                    // -------------------------------------
                                 ?>
                                     <div class="file-card">
                                         <div class="menu-container">
                                             <div class="menu-btn" onclick="toggleMenu('menu-<?php echo $doc['doc_id']; ?>', event)"><i class="fa-solid fa-ellipsis-vertical"></i></div>
                                             <div class="dropdown-menu" id="menu-<?php echo $doc['doc_id']; ?>">
-                                                <span class="dropdown-item" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')"><i class="fa-regular fa-eye"></i> View</span>
+
+                                                <a href="<?php echo $file_url; ?>" target="_blank" class="dropdown-item">
+                                                    <i class="fa-regular fa-eye"></i> View
+                                                </a>
+
                                                 <span class="dropdown-item" onclick="openRenameModal('<?php echo $doc['doc_id']; ?>', '<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>')"><i class="fa-regular fa-pen-to-square"></i> Rename</span>
                                                 <a href="uploads/<?php echo $doc['file_path']; ?>" download class="dropdown-item"><i class="fa-solid fa-download"></i> Download</a>
                                                 <a href="student_view.php?id=<?php echo $student_id; ?>&del_doc=<?php echo $doc['doc_id']; ?>" class="dropdown-item del" onclick="return confirm('Delete?')"><i class="fa-solid fa-trash"></i> Delete</a>
                                             </div>
                                         </div>
-                                        <div class="file-icon-box" style="background:<?php echo $bg; ?>; color:<?php echo $col; ?>;" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')"><i class="fa-regular <?php echo $icon; ?>"></i></div>
+
+                                        <a href="<?php echo $file_url; ?>" target="_blank" class="file-icon-box" style="background:<?php echo $bg; ?>; color:<?php echo $col; ?>;">
+                                            <i class="fa-regular <?php echo $icon; ?>"></i>
+                                        </a>
+
                                         <div class="file-name" title="<?php echo $doc['title']; ?>"><?php echo $doc['title']; ?></div>
                                         <div class="file-meta"><?php echo $doc['file_size']; ?></div>
                                     </div>
@@ -941,6 +974,7 @@ $curr_class = $student['class_year'];
             }
         }
 
+        // Keep this for preview if needed, though direct links are preferred now
         function openPreview(name, path, ext) {
             document.getElementById('previewModal').style.display = 'flex';
             document.getElementById('previewTitle').innerText = name;

@@ -1,6 +1,7 @@
 <?php
 session_start();
 include 'db_conn.php';
+include 'google_drive.php'; // ADDED: Include Drive Helper
 
 // 1. LOGIN & ROLE CHECK
 if (!isset($_SESSION['user_id'])) {
@@ -77,7 +78,7 @@ if (isset($_GET['del_cat_id'])) {
     }
 }
 
-// --- ACTION 4: UPLOAD FILE ---
+// --- ACTION 4: UPLOAD FILE (DRIVE UPDATE) ---
 if (isset($_POST['upload_file'])) {
     $title = mysqli_real_escape_string($conn, $_POST['title']);
     $category = mysqli_real_escape_string($conn, $_POST['category']);
@@ -86,19 +87,21 @@ if (isset($_POST['upload_file'])) {
     $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
     $filesize = $_FILES['file']['size'];
     $size_text = ($filesize >= 1048576) ? number_format($filesize / 1048576, 2) . ' MB' : number_format($filesize / 1024, 2) . ' KB';
-    $new_filename = uniqid() . "." . $ext;
 
     // SECURITY: Allowed File Extensions List
     $allowed_exts = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif', 'txt', 'mp4', 'mp3', 'wav', 'webm', 'ogg'];
 
     if (in_array($ext, $allowed_exts)) {
-        if (move_uploaded_file($_FILES['file']['tmp_name'], "uploads/" . $new_filename)) {
+        // UPLOAD TO DRIVE
+        $drive_link = uploadToDrive($_FILES['file']['tmp_name'], $filename);
+
+        if ($drive_link) {
             $sql = "INSERT INTO documents (title, category, file_path, file_type, file_size, is_starred) 
-                    VALUES ('$title', '$category', '$new_filename', '$ext', '$size_text', 0)";
+                    VALUES ('$title', '$category', '$drive_link', '$ext', '$size_text', 0)";
             mysqli_query($conn, $sql);
-            $message = "<div class='alert success'>File Uploaded!</div>";
+            $message = "<div class='alert success'>File Uploaded to Google Drive!</div>";
         } else {
-            $message = "<div class='alert error'>Failed to move uploaded file. Check folder permissions.</div>";
+            $message = "<div class='alert error'>Drive Upload Failed.</div>";
         }
     } else {
         $message = "<div class='alert error'>Invalid file type! Allowed: PDF, Office Docs, Images, Media.</div>";
@@ -119,21 +122,9 @@ if (isset($_POST['edit_file'])) {
 if (isset($_GET['delete_id'])) {
     $id = mysqli_real_escape_string($conn, $_GET['delete_id']);
 
-    // SECURITY: Fetch path from DB instead of GET to prevent Path Traversal
-    $query = mysqli_query($conn, "SELECT file_path FROM documents WHERE doc_id='$id'");
-    $file = mysqli_fetch_assoc($query);
-
-    if ($file) {
-        $path = "uploads/" . $file['file_path'];
-
-        // Delete physical file
-        if (file_exists($path)) {
-            unlink($path);
-        }
-
-        // Delete DB Record
-        mysqli_query($conn, "DELETE FROM documents WHERE doc_id='$id'");
-    }
+    // Note: We only delete from DB here. Deleting from Drive requires ID storage which we are not tracking fully yet.
+    // For now, it just removes the record from the portal.
+    mysqli_query($conn, "DELETE FROM documents WHERE doc_id='$id'");
 
     header("Location: documents.php");
     exit();
@@ -577,6 +568,11 @@ $result_docs = mysqli_query($conn, $sql_docs);
                             $bg = "type-doc";
                             $icon = "fa-file";
 
+                            // Check if it's a Drive Link (starts with http)
+                            $isFileOnDrive = (strpos($doc['file_path'], 'http') === 0);
+                            $downloadLink = $isFileOnDrive ? $doc['file_path'] : "uploads/" . $doc['file_path'];
+                            $target = $isFileOnDrive ? "_blank" : "_self";
+
                             if ($ext == 'pdf') {
                                 $bg = "type-pdf"; // Red
                                 $icon = "fa-file-pdf";
@@ -600,24 +596,27 @@ $result_docs = mysqli_query($conn, $sql_docs);
                                         <i class="fa-solid fa-ellipsis-vertical"></i>
                                     </div>
                                     <div class="dropdown-menu" id="menu-<?php echo $doc['doc_id']; ?>">
-                                        <span class="dropdown-item" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')">
-                                            <i class="fa-regular fa-eye"></i> View
-                                        </span>
+                                        <a href="<?php echo $downloadLink; ?>" target="<?php echo $target; ?>" class="dropdown-item">
+                                            <i class="fa-regular fa-eye"></i> View/Open
+                                        </a>
+                                        <a href="<?php echo $downloadLink; ?>" download class="dropdown-item">
+                                            <i class="fa-solid fa-download"></i> Download
+                                        </a>
                                         <span class="dropdown-item" onclick="openEditModal('<?php echo $doc['doc_id']; ?>', '<?php echo addslashes($doc['title']); ?>', '<?php echo $doc['category']; ?>')">
                                             <i class="fa-solid fa-pen"></i> Edit
                                         </span>
-                                        <a href="uploads/<?php echo $doc['file_path']; ?>" download class="dropdown-item">
-                                            <i class="fa-solid fa-download"></i> Download
-                                        </a>
                                         <a href="documents.php?delete_id=<?php echo $doc['doc_id']; ?>" class="dropdown-item del" onclick="return confirm('Delete?')">
                                             <i class="fa-solid fa-trash"></i> Delete
                                         </a>
                                     </div>
                                 </div>
 
-                                <div class="file-icon-box <?php echo $bg; ?>" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')">
-                                    <i class="fa-regular <?php echo $icon; ?>"></i>
-                                </div>
+                                <a href="<?php echo $downloadLink; ?>" target="<?php echo $target; ?>" style="text-decoration:none;">
+                                    <div class="file-icon-box <?php echo $bg; ?>">
+                                        <i class="fa-regular <?php echo $icon; ?>"></i>
+                                    </div>
+                                </a>
+
                                 <div class="file-name" title="<?php echo $doc['title']; ?>"><?php echo $doc['title']; ?></div>
                                 <div class="file-meta"><span><?php echo $doc['file_size']; ?></span><span><?php echo $doc['category']; ?></span></div>
                             </div>
@@ -633,7 +632,7 @@ $result_docs = mysqli_query($conn, $sql_docs);
     <div id="uploadModal" class="modal-overlay">
         <div class="modal-content">
             <span class="close-modal" onclick="closeModal('uploadModal')">&times;</span>
-            <h3 style="margin-bottom:20px;">Upload File</h3>
+            <h3 style="margin-bottom:20px;">Upload File (to Drive)</h3>
             <form action="" method="POST" enctype="multipart/form-data">
                 <input type="text" name="title" class="form-input" required placeholder="File Title">
                 <select name="category" class="form-input" required>
@@ -695,19 +694,6 @@ $result_docs = mysqli_query($conn, $sql_docs);
         </div>
     </div>
 
-    <div id="previewModal" class="modal-overlay">
-        <div class="modal-content" style="width:800px; height:85vh; display:flex; flex-direction:column; padding:0; background:transparent; box-shadow:none;">
-            <div style="background:white; padding:15px 20px; border-radius:12px 12px 0 0; display:flex; justify-content:space-between; align-items:center;">
-                <h3 id="previewTitle" style="color:#1F293B; margin:0; font-size:18px;">Preview</h3>
-                <div style="display:flex; gap:10px;">
-                    <a id="downloadBtn" href="#" download style="padding:8px 15px; background:#F17C1C; color:white; text-decoration:none; border-radius:6px; font-size:13px; font-weight:600;"><i class="fa-solid fa-download"></i> Download</a>
-                    <i class="fa-solid fa-xmark" onclick="closeModal('previewModal')" style="font-size:24px; color:#64748B; cursor:pointer; display:flex; align-items:center;"></i>
-                </div>
-            </div>
-            <div id="previewBody" style="flex:1; background:#F1F5F9; border-radius:0 0 12px 12px; overflow:hidden; display:flex; align-items:center; justify-content:center; position:relative;"></div>
-        </div>
-    </div>
-
     <script>
         function openModal(id) {
             document.getElementById(id).style.display = 'flex';
@@ -729,30 +715,6 @@ $result_docs = mysqli_query($conn, $sql_docs);
             document.getElementById('old_cat_name').value = name;
             document.getElementById('new_cat_name').value = name;
             openModal('renameModal');
-        }
-
-        function openPreview(name, path, ext) {
-            document.getElementById('previewModal').style.display = 'flex';
-            document.getElementById('previewTitle').innerText = name;
-            document.getElementById('downloadBtn').href = path;
-            const container = document.getElementById('previewBody');
-            container.innerHTML = '';
-
-            var extLc = ext.toLowerCase();
-
-            if (['jpg', 'jpeg', 'png', 'gif'].includes(extLc)) {
-                container.innerHTML = `<img src="${path}" style="max-width:100%; max-height:100%; object-fit:contain;">`;
-            } else if (extLc === 'pdf') {
-                container.innerHTML = `<iframe src="${path}" style="width:100%; height:100%; border:none;"></iframe>`;
-            } else if (['mp4', 'webm', 'ogg'].includes(extLc)) {
-                container.innerHTML = `<video src="${path}" controls style="max-width:100%; max-height:100%; outline:none; box-shadow:0 4px 10px rgba(0,0,0,0.1); border-radius:8px;"></video>`;
-            } else if (['mp3', 'wav'].includes(extLc)) {
-                container.innerHTML = `<audio src="${path}" controls style="width:80%; outline:none;"></audio>`;
-            } else if (extLc === 'txt') {
-                container.innerHTML = `<iframe src="${path}" style="width:100%; height:100%; border:none; background:white;"></iframe>`;
-            } else {
-                container.innerHTML = `<div style="text-align:center; color:#64748B;">No preview available for this file type.<br>Please download to view.</div>`;
-            }
         }
 
         function toggleMenu(id, event) {
