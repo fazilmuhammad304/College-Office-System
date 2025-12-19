@@ -13,12 +13,10 @@ if (!isset($_SESSION['user_id']) && !isset($_SESSION['username'])) {
 
 $message = "";
 
-// 2. SAVE ATTENDANCE (With Security PIN Check)
+// 2. SAVE ATTENDANCE
 if (isset($_POST['save_attendance'])) {
-
-    // --- [SECURITY PIN CHECK] ---
     $submitted_pin = $_POST['security_pin'];
-    $valid_pin = "1234"; // Update your PIN here
+    $valid_pin = "1234"; // Admin PIN
 
     if ($submitted_pin !== $valid_pin) {
         $message = "<div class='alert error'><i class='fa-solid fa-triangle-exclamation'></i> Incorrect PIN! Attendance not saved.</div>";
@@ -50,44 +48,51 @@ if (isset($_POST['save_attendance'])) {
 // 3. FILTER LOGIC & QUERY BUILDING
 $filter_program = isset($_GET['program']) ? $_GET['program'] : 'All';
 $filter_year    = isset($_GET['year']) ? $_GET['year'] : 'All';
-$selected_date  = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d'); // Now respects Asia/Colombo
+$filter_student = isset($_GET['student']) ? $_GET['student'] : '';
+$selected_date  = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
 
-// Build Dynamic SQL Conditions for Students
-$filter_conditions = "s.status='Active'";
+// --- BUILD SQL CONDITIONS ---
+// 1. Must be Active
+// 2. Must be admitted ON or BEFORE the selected date (Fixes the issue of future students showing up)
+$filter_conditions = "s.status='Active' AND (s.admission_date <= '$selected_date' OR s.admission_date IS NULL)";
 
+// Filter by Program
 if ($filter_program != '' && $filter_program != 'All') {
     $prog_safe = mysqli_real_escape_string($conn, $filter_program);
     $filter_conditions .= " AND (s.class_year = '$prog_safe' OR s.class_year LIKE '$prog_safe %')";
 }
 
+// Filter by Year
 if ($filter_year != '' && $filter_year != 'All') {
     $year_safe = mysqli_real_escape_string($conn, $filter_year);
     $filter_conditions .= " AND s.class_year LIKE '%$year_safe%'";
 }
 
-// --- [NEW FEATURE] PERCENTAGE CALCULATIONS (FILTER AWARE) ---
+// Filter by Student Name/ID (Search Bar)
+if ($filter_student != '') {
+    $stu_safe = mysqli_real_escape_string($conn, $filter_student);
+    $filter_conditions .= " AND (s.full_name LIKE '%$stu_safe%' OR s.admission_no LIKE '%$stu_safe%')";
+}
 
-// A. Percentage for Selected Date (Applied Filter)
-// 1. Get Total Students matching the filter
+// --- [PERCENTAGE CALCULATIONS] ---
+
+// A. Percentage for Selected Date (Based on current filters)
 $active_count_query = mysqli_query($conn, "SELECT COUNT(*) as total FROM students s WHERE $filter_conditions");
 $active_count_data = mysqli_fetch_assoc($active_count_query);
 $total_filtered_students = $active_count_data['total'];
 
-// 2. Get Present Count for Selected Date matching the filter
 $present_count_query = mysqli_query($conn, "SELECT COUNT(*) as total FROM attendance a 
                                             JOIN students s ON a.student_id = s.student_id 
                                             WHERE a.date='$selected_date' AND a.status='Present' AND $filter_conditions");
 $present_count_data = mysqli_fetch_assoc($present_count_query);
 $present_on_date = $present_count_data['total'];
 
-// Calculation
 $date_percentage = ($total_filtered_students > 0) ? round(($present_on_date / $total_filtered_students) * 100, 1) : 0;
 
 
-// B. Average Percentage (Range: Selected Date to Today)
+// B. Average Percentage (Range: Selected Date -> Today)
 $range_percentage = 0;
 if ($selected_date <= date('Y-m-d')) {
-    // 1. Count Total 'Present' records in range (Filtered)
     $range_present_query = mysqli_query($conn, "SELECT COUNT(*) as total FROM attendance a 
                                                 JOIN students s ON a.student_id = s.student_id 
                                                 WHERE a.date >= '$selected_date' AND a.date <= CURDATE() 
@@ -95,7 +100,6 @@ if ($selected_date <= date('Y-m-d')) {
     $range_present_data = mysqli_fetch_assoc($range_present_query);
     $total_range_present = $range_present_data['total'];
 
-    // 2. Count Total Attendance Records in range (Filtered)
     $range_total_query = mysqli_query($conn, "SELECT COUNT(*) as total FROM attendance a 
                                               JOIN students s ON a.student_id = s.student_id 
                                               WHERE a.date >= '$selected_date' AND a.date <= CURDATE() 
@@ -103,11 +107,10 @@ if ($selected_date <= date('Y-m-d')) {
     $range_total_data = mysqli_fetch_assoc($range_total_query);
     $total_range_records = $range_total_data['total'];
 
-    // Calculation
     $range_percentage = ($total_range_records > 0) ? round(($total_range_present / $total_range_records) * 100, 1) : 0;
 }
 
-// 4. FETCH STUDENTS FOR LIST
+// 4. FETCH STUDENTS LIST
 $query = "SELECT * FROM students s WHERE $filter_conditions ORDER BY s.admission_no ASC";
 $students = mysqli_query($conn, $query);
 
@@ -128,119 +131,135 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
     <link rel="stylesheet" href="dashboard.css">
 
     <style>
-        /* --- STYLES --- */
-        .filters-card {
+        .attendance-card {
             background: white;
-            padding: 25px 30px;
             border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
-            margin-bottom: 25px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+            overflow: hidden;
+            border: 1px solid #E5E7EB;
+            margin-bottom: 100px;
+        }
+
+        .filters-toolbar {
+            background: #F8FAFC;
+            padding: 20px;
+            border-bottom: 1px solid #E2E8F0;
             display: flex;
             align-items: flex-end;
-            gap: 25px;
-            border: 1px solid #F3F4F6;
+            gap: 15px;
+            flex-wrap: wrap;
         }
 
         .filter-group {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 5px;
             flex: 1;
+            min-width: 140px;
         }
 
         .filter-group label {
-            font-size: 13px;
+            font-size: 11px;
             font-weight: 700;
-            color: #374151;
+            color: #64748B;
             text-transform: uppercase;
         }
 
         .filter-input {
             width: 100%;
-            padding: 12px 20px;
-            border: 1px solid #E5E7EB;
-            border-radius: 10px;
+            padding: 10px 12px;
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
             outline: none;
-            color: #1F2937;
-            font-size: 14px;
+            color: #1E293B;
+            font-size: 13px;
             font-weight: 500;
-            background-color: #F9FAFB;
+            background-color: white;
+            transition: 0.2s;
+        }
+
+        .filter-input:focus {
+            border-color: #ED8936;
+            box-shadow: 0 0 0 2px rgba(237, 137, 54, 0.1);
         }
 
         .btn-load {
-            background-color: #4C1D95;
+            background-color: #1E293B;
             color: white;
-            padding: 12px 30px;
+            padding: 10px 20px;
             border: none;
-            border-radius: 10px;
+            border-radius: 8px;
             cursor: pointer;
             font-weight: 600;
-            height: 46px;
+            font-size: 13px;
+            height: 38px;
             display: flex;
             align-items: center;
             gap: 8px;
+            white-space: nowrap;
+        }
+
+        .btn-load:hover {
+            background-color: #0F172A;
+        }
+
+        .actions-bar {
+            padding: 15px 20px;
+            background: white;
+            border-bottom: 1px solid #F1F5F9;
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-quick {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid #E2E8F0;
+            background: white;
+            color: #475569;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-quick:hover {
+            background: #F8FAFC;
+            color: #0F172A;
+            border-color: #CBD5E1;
         }
 
         .stats-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
-            margin-bottom: 25px;
+            margin-bottom: 20px;
         }
 
         .stat-box {
             background: white;
-            padding: 20px;
+            padding: 15px 20px;
             border-radius: 12px;
             border: 1px solid #E5E7EB;
-            text-align: center;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.02);
         }
 
         .stat-value {
-            font-size: 32px;
+            font-size: 24px;
             font-weight: 800;
-            margin-bottom: 5px;
         }
 
         .stat-label {
             font-size: 12px;
             font-weight: 600;
-            color: #6B7280;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .quick-actions {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-
-        .btn-quick {
-            padding: 8px 15px;
-            border-radius: 6px;
-            border: 1px solid #E5E7EB;
-            background: white;
-            color: #4B5563;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: 0.2s;
-        }
-
-        .btn-quick:hover {
-            background: #F3F4F6;
-            color: #111827;
-        }
-
-        .attendance-card {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
-            overflow: hidden;
-            border: 1px solid #F3F4F6;
-            margin-bottom: 100px;
+            color: #64748B;
+            text-align: right;
         }
 
         .att-table {
@@ -249,43 +268,38 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
         }
 
         .att-table th {
-            padding: 15px 25px;
-            background: #F8FAFC;
-            color: #64748B;
-            font-size: 12px;
+            padding: 12px 20px;
+            background: #F1F5F9;
+            color: #475569;
+            font-size: 11px;
             font-weight: 700;
             text-transform: uppercase;
-            border-bottom: 2px solid #E2E8F0;
+            border-bottom: 1px solid #E2E8F0;
             text-align: left;
         }
 
         .att-table td {
-            padding: 12px 25px;
+            padding: 12px 20px;
             border-bottom: 1px solid #F1F5F9;
             vertical-align: middle;
         }
 
-        .student-profile {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-        }
-
         .st-avatar {
-            width: 40px;
-            height: 40px;
-            background: #F3F4F6;
-            border-radius: 10px;
+            width: 32px;
+            height: 32px;
+            background: #E2E8F0;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 700;
-            color: #6B7280;
+            color: #64748B;
+            font-size: 12px;
         }
 
         .status-options {
             display: flex;
-            gap: 8px;
+            gap: 5px;
         }
 
         .status-radio {
@@ -293,37 +307,37 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
         }
 
         .status-label {
-            width: 35px;
-            height: 35px;
-            border-radius: 8px;
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: 700;
-            font-size: 13px;
+            font-size: 12px;
             cursor: pointer;
             border: 1px solid #E2E8F0;
             color: #94A3B8;
             background: white;
-            transition: 0.2s;
+            transition: 0.1s;
         }
 
         .status-radio[value="Present"]:checked+.status-label {
             background: #DCFCE7;
-            color: #166534;
-            border-color: #16A34A;
+            color: #15803D;
+            border-color: #15803D;
         }
 
         .status-radio[value="Absent"]:checked+.status-label {
             background: #FEE2E2;
-            color: #991B1B;
-            border-color: #DC2626;
+            color: #B91C1C;
+            border-color: #B91C1C;
         }
 
         .status-radio[value="Holiday"]:checked+.status-label {
             background: #E0E7FF;
             color: #4338CA;
-            border-color: #4F46E5;
+            border-color: #4338CA;
         }
 
         .save-bar {
@@ -332,13 +346,30 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
             right: 0;
             left: 260px;
             background: white;
-            padding: 15px 40px;
+            padding: 15px 30px;
             box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-top: 1px solid #E2E8F0;
             z-index: 50;
+        }
+
+        .btn-save {
+            background-color: #ED8936;
+            color: white;
+            padding: 10px 30px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-save:hover {
+            background-color: #D67625;
         }
 
         .modal-overlay {
@@ -380,46 +411,11 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
             border-color: #ED8936;
         }
 
-        .btn-confirm {
-            background: #ED8936;
-            color: white;
-            border: none;
-            padding: 12px;
-            width: 100%;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            font-size: 15px;
-        }
-
-        .btn-confirm:hover {
-            background: #C05621;
-        }
-
-        .btn-save {
-            background-color: #ED8936;
-            color: white;
-            padding: 12px 35px;
-            border-radius: 8px;
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .btn-save:hover {
-            background-color: #D67625;
-        }
-
         .alert {
             padding: 15px;
             margin-bottom: 25px;
             border-radius: 10px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            text-align: center;
         }
 
         .success {
@@ -446,23 +442,39 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
 
             <header class="top-header">
                 <h2>Attendance Registry</h2>
-                <div class="header-right">
-                    <div style="background:white; padding:8px 15px; border-radius:8px; border:1px solid #E5E7EB; font-weight:600; color:#374151;">
-                        Selected: <span style="color:#2563EB;"><?php echo date('d M, Y', strtotime($selected_date)); ?></span>
-                    </div>
+                <div style="background:white; padding:8px 15px; border-radius:8px; border:1px solid #E5E7EB; font-weight:600; color:#374151;">
+                    <?php echo date('F d, Y', strtotime($selected_date)); ?>
                 </div>
             </header>
 
             <?php echo $message; ?>
 
-            <form method="GET" action="">
-                <div class="filters-card">
+            <div class="stats-row">
+                <div class="stat-box">
+                    <div>
+                        <div class="stat-label" style="text-align:left;">Date Attendance</div>
+                        <div style="font-size:11px; color:#94A3B8;">On Selected Date</div>
+                    </div>
+                    <div class="stat-value" style="color: #059669;"><?php echo $date_percentage; ?>%</div>
+                </div>
+                <div class="stat-box">
+                    <div>
+                        <div class="stat-label" style="text-align:left;">Average</div>
+                        <div style="font-size:11px; color:#94A3B8;">Till Date (Filtered)</div>
+                    </div>
+                    <div class="stat-value" style="color: #4F46E5;"><?php echo $range_percentage; ?>%</div>
+                </div>
+            </div>
+
+            <div class="attendance-card">
+
+                <form method="GET" class="filters-toolbar">
                     <div class="filter-group">
-                        <label>Select Date</label>
+                        <label>Date</label>
                         <input type="date" name="date" class="filter-input" value="<?php echo $selected_date; ?>">
                     </div>
                     <div class="filter-group">
-                        <label>Filter by Program</label>
+                        <label>Program</label>
                         <select name="program" class="filter-input">
                             <option value="All">All Programs</option>
                             <?php
@@ -476,7 +488,7 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
                         </select>
                     </div>
                     <div class="filter-group">
-                        <label>Filter by Year</label>
+                        <label>Year</label>
                         <select name="year" class="filter-input">
                             <option value="All" <?php if ($filter_year == 'All') echo 'selected'; ?>>All Years</option>
                             <option value="1st Year" <?php if ($filter_year == '1st Year') echo 'selected'; ?>>1st Year</option>
@@ -488,66 +500,56 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
                             <option value="Final Year" <?php if ($filter_year == 'Final Year') echo 'selected'; ?>>Final Year</option>
                         </select>
                     </div>
-                    <button type="submit" class="btn-load">
-                        <i class="fa-solid fa-filter"></i> Load List
-                    </button>
-                </div>
-            </form>
-
-            <div class="stats-row">
-                <div class="stat-box">
-                    <div class="stat-value" style="color: #059669;"><?php echo $date_percentage; ?>%</div>
-                    <div class="stat-label">On <?php echo date('d M', strtotime($selected_date)); ?></div>
-                </div>
-                <div class="stat-box">
-                    <div class="stat-value" style="color: #4F46E5;"><?php echo $range_percentage; ?>%</div>
-                    <div class="stat-label">Average (<?php echo date('d M', strtotime($selected_date)); ?> - Today)</div>
-                </div>
-            </div>
-
-            <form method="POST" action="" id="attForm">
-                <input type="hidden" name="attendance_date" value="<?php echo $selected_date; ?>">
-                <input type="hidden" name="security_pin" id="hiddenPin" value="">
-
-                <?php if (mysqli_num_rows($students) > 0) { ?>
-
-                    <div class="quick-actions">
-                        <button type="button" class="btn-quick" onclick="markAll('Present')"><i class="fa-solid fa-check"></i> Mark All Present</button>
-                        <button type="button" class="btn-quick" onclick="markAll('Holiday')"><i class="fa-solid fa-umbrella-beach"></i> Mark All Holiday</button>
-                        <button type="button" class="btn-quick" onclick="markAll('Absent')"><i class="fa-solid fa-xmark"></i> Mark All Absent</button>
+                    <div class="filter-group">
+                        <label>Student Search</label>
+                        <input type="text" name="student" class="filter-input" placeholder="Name or ID..." value="<?php echo htmlspecialchars($filter_student); ?>">
                     </div>
+                    <button type="submit" class="btn-load">
+                        <i class="fa-solid fa-rotate"></i> Load Data
+                    </button>
+                </form>
 
-                    <div class="attendance-card">
+                <div class="actions-bar">
+                    <button type="button" class="btn-quick" onclick="markAll('Present')"><i class="fa-solid fa-check"></i> All Present</button>
+                    <button type="button" class="btn-quick" onclick="markAll('Absent')"><i class="fa-solid fa-xmark"></i> All Absent</button>
+                    <button type="button" class="btn-quick" onclick="markAll('Holiday')"><i class="fa-solid fa-umbrella-beach"></i> All Holiday</button>
+                </div>
+
+                <form method="POST" id="attForm">
+                    <input type="hidden" name="attendance_date" value="<?php echo $selected_date; ?>">
+                    <input type="hidden" name="security_pin" id="hiddenPin" value="">
+
+                    <?php if (mysqli_num_rows($students) > 0) { ?>
                         <table class="att-table">
                             <thead>
                                 <tr>
-                                    <th style="width: 40%;">Student Name</th>
-                                    <th style="width: 25%;">Class</th>
-                                    <th style="width: 35%;">Status</th>
+                                    <th style="width: 45%;">Student</th>
+                                    <th style="width: 25%;">Class Info</th>
+                                    <th style="width: 30%;">Status</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php
-                                while ($row = mysqli_fetch_assoc($students)) {
+                                <?php while ($row = mysqli_fetch_assoc($students)) {
                                     $sid = $row['student_id'];
                                     $initial = substr($row['full_name'], 0, 1);
-                                    $status_sql = "SELECT status FROM attendance WHERE student_id='$sid' AND date='$selected_date'";
-                                    $res = mysqli_query($conn, $status_sql);
+
+                                    // Fetch specific attendance
+                                    $res = mysqli_query($conn, "SELECT status FROM attendance WHERE student_id='$sid' AND date='$selected_date'");
                                     $existing = mysqli_fetch_assoc($res);
                                     $status = $existing ? $existing['status'] : 'Present';
                                 ?>
                                     <tr>
                                         <td>
-                                            <div class="student-profile">
+                                            <div style="display:flex; align-items:center; gap:12px;">
                                                 <div class="st-avatar"><?php echo $initial; ?></div>
-                                                <div class="st-info">
-                                                    <h4 style="margin:0; font-size:14px;"><?php echo $row['full_name']; ?></h4>
-                                                    <span style="font-size:12px; color:#9CA3AF;"><?php echo $row['admission_no']; ?></span>
+                                                <div>
+                                                    <div style="font-weight:600; font-size:13px; color:#1E293B;"><?php echo $row['full_name']; ?></div>
+                                                    <div style="font-size:11px; color:#94A3B8;"><?php echo $row['admission_no']; ?></div>
                                                 </div>
                                             </div>
                                         </td>
                                         <td>
-                                            <span style="font-weight:600; color:#475569; background:#F1F5F9; padding:5px 10px; border-radius:6px; font-size:12px;">
+                                            <span style="font-size:11px; color:#475569; background:#F1F5F9; padding:4px 8px; border-radius:4px; border:1px solid #E2E8F0;">
                                                 <?php echo $row['class_year']; ?>
                                             </span>
                                         </td>
@@ -568,24 +570,25 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
                                 <?php } ?>
                             </tbody>
                         </table>
-                    </div>
 
-                    <div class="save-bar">
-                        <div style="font-size:14px; color:#475569;">
-                            Editing: <b style="color:#1E293B;"><?php echo date('d M, Y', strtotime($selected_date)); ?></b>
+                        <div class="save-bar">
+                            <div style="font-size:13px; color:#64748B;">
+                                Records: <b><?php echo mysqli_num_rows($students); ?></b>
+                            </div>
+                            <button type="button" onclick="openSecurityModal()" class="btn-save">
+                                <i class="fa-solid fa-lock"></i> <?php echo $btn_text; ?>
+                            </button>
+                            <button type="submit" name="save_attendance" id="realSubmitBtn" style="display:none;"></button>
                         </div>
-                        <button type="button" onclick="openSecurityModal()" class="btn-save">
-                            <i class="fa-solid fa-lock"></i> <?php echo $btn_text; ?>
-                        </button>
-                        <button type="submit" name="save_attendance" id="realSubmitBtn" style="display:none;"></button>
-                    </div>
 
-                <?php } else { ?>
-                    <div style="text-align:center; padding:50px; background:white; border-radius:12px; border:1px dashed #E5E7EB; color:#6B7280;">
-                        No active students found.
-                    </div>
-                <?php } ?>
-            </form>
+                    <?php } else { ?>
+                        <div style="text-align:center; padding:60px 20px; color:#94A3B8;">
+                            <i class="fa-regular fa-folder-open" style="font-size:30px; margin-bottom:10px; opacity:0.5;"></i><br>
+                            No students found matching your filters.
+                        </div>
+                    <?php } ?>
+                </form>
+            </div>
 
         </main>
     </div>
@@ -595,12 +598,10 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
             <i class="fa-solid fa-shield-halved" style="font-size:40px; color:#ED8936; margin-bottom:15px;"></i>
             <h3 style="color:#1F2937; margin-bottom:5px;">Security Check</h3>
             <p style="color:#6B7280; font-size:13px; margin-bottom:20px;">Enter Admin PIN to update records</p>
-
             <input type="password" id="adminPin" class="pass-input" placeholder="****" maxlength="4">
-
             <div style="display:flex; gap:10px;">
-                <button onclick="closeModal()" style="background:#F3F4F6; color:#4B5563; border:none; padding:10px; flex:1; border-radius:8px; cursor:pointer;">Cancel</button>
-                <button onclick="verifyPin()" class="btn-confirm">Verify & Save</button>
+                <button onclick="closeModal()" style="background:#F3F4F6; color:#4B5563; border:none; padding:10px; width:100%; border-radius:8px; cursor:pointer;">Cancel</button>
+                <button onclick="verifyPin()" style="background:#ED8936; color:white; border:none; padding:10px; width:100%; border-radius:8px; cursor:pointer; font-weight:600;">Confirm</button>
             </div>
             <p id="errorMsg" style="color:red; font-size:12px; margin-top:10px; display:none;">Please enter a PIN</p>
         </div>
@@ -609,9 +610,7 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
     <script>
         function markAll(statusValue) {
             const radios = document.querySelectorAll(`input[type="radio"][value="${statusValue}"]`);
-            radios.forEach(radio => {
-                radio.checked = true;
-            });
+            radios.forEach(radio => radio.checked = true);
         }
 
         const modal = document.getElementById('securityModal');

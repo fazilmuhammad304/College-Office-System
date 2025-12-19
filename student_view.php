@@ -16,24 +16,61 @@ if (!isset($_GET['id'])) {
 $student_id = mysqli_real_escape_string($conn, $_GET['id']);
 $message = "";
 
-// --- FETCH PROGRAMS FOR DROPDOWN (FIXED) ---
+// --- FETCH PROGRAMS FOR DROPDOWN ---
 $programs_result = mysqli_query($conn, "SELECT program_name FROM programs ORDER BY program_name ASC");
 
-// --- ACTION 1: UPDATE CLASS/YEAR (Sidebar) ---
+// ==========================================
+// NEW ATTENDANCE LOGIC (CALENDAR & STATS)
+// ==========================================
+$month = isset($_GET['month']) ? intval($_GET['month']) : date('n'); // 1-12
+$year  = isset($_GET['year']) ? intval($_GET['year']) : date('Y');
+
+// 1. Fetch Stats for the SELECTED MONTH/YEAR
+$stats_sql = "SELECT COUNT(*) as total, 
+              SUM(CASE WHEN status='Present' THEN 1 ELSE 0 END) as present 
+              FROM attendance 
+              WHERE student_id='$student_id' 
+              AND MONTH(date) = '$month' 
+              AND YEAR(date) = '$year'";
+$att_stats = mysqli_fetch_assoc(mysqli_query($conn, $stats_sql));
+
+// Calculate Percentage
+$att_perc = 0;
+if ($att_stats['total'] > 0) {
+    $att_perc = round(($att_stats['present'] / $att_stats['total']) * 100);
+}
+
+// 2. Fetch Attendance Map for the Grid
+$att_map_sql = "SELECT DAY(date) as day, status 
+                FROM attendance 
+                WHERE student_id = '$student_id' 
+                AND MONTH(date) = '$month' 
+                AND YEAR(date) = '$year'";
+$att_map_res = mysqli_query($conn, $att_map_sql);
+
+$attendance_map = [];
+if ($att_map_res) {
+    while ($r = mysqli_fetch_assoc($att_map_res)) {
+        $attendance_map[$r['day']] = $r['status'];
+    }
+}
+
+// Calendar Calculation
+$days_in_month = cal_days_in_month(CAL_GREGORIAN, $month, $year);
+$first_day_of_week = date('w', strtotime("$year-$month-01")); // 0=Sun, 1=Mon...
+
+// ==========================================
+// END NEW ATTENDANCE LOGIC
+// ==========================================
+
+// --- ACTION 1: UPDATE CLASS/YEAR ---
 if (isset($_POST['update_class_info'])) {
     $program = mysqli_real_escape_string($conn, $_POST['program']);
-    $year = mysqli_real_escape_string($conn, $_POST['year']);
+    $year_val = mysqli_real_escape_string($conn, $_POST['year']);
 
-    // Combine Program + Year (e.g. "Hifz Class 1st Year")
-    // If year is empty or N/A, just use Program name
-    if (!empty($year)) {
-        $new_class_year = "$program $year";
-    } else {
-        $new_class_year = $program;
-    }
-
+    $new_class_year = (!empty($year_val)) ? "$program $year_val" : $program;
     $new_status = 'Active';
-    if ($year == "Graduated" || $program == "Graduated") {
+    if ($year_val == "Graduated" || $program == "Graduated") {
         $new_status = "Graduated";
         $new_class_year = "Graduated";
     }
@@ -45,7 +82,7 @@ if (isset($_POST['update_class_info'])) {
     }
 }
 
-// --- ACTION 2: UPDATE PERSONAL INFO (Modal) ---
+// --- ACTION 2: UPDATE PERSONAL INFO ---
 if (isset($_POST['update_personal_info'])) {
     $full_name = mysqli_real_escape_string($conn, $_POST['full_name']);
     $gender = $_POST['gender'];
@@ -80,7 +117,6 @@ if (isset($_POST['upload_student_doc'])) {
     $filename = $_FILES['doc_file']['name'];
     $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
     $new_filename = uniqid() . "." . $ext;
-
     $filesize = $_FILES['doc_file']['size'];
     $size_text = ($filesize >= 1048576) ? number_format($filesize / 1048576, 2) . ' MB' : number_format($filesize / 1024, 2) . ' KB';
 
@@ -101,8 +137,19 @@ if (isset($_GET['del_doc'])) {
         unlink("uploads/" . $f['file_path']);
     }
     mysqli_query($conn, "DELETE FROM documents WHERE doc_id='$doc_id'");
-    header("Location: student_view.php?id=$student_id");
+    header("Location: student_view.php?id=$student_id&tab=docs");
     exit();
+}
+
+// --- ACTION 5: RENAME DOCUMENT (NEW) ---
+if (isset($_POST['rename_document'])) {
+    $r_doc_id = mysqli_real_escape_string($conn, $_POST['rename_doc_id']);
+    $r_title = mysqli_real_escape_string($conn, $_POST['rename_doc_title']);
+
+    if (mysqli_query($conn, "UPDATE documents SET title='$r_title' WHERE doc_id='$r_doc_id'")) {
+        $message = "<div class='alert success'>Document Renamed!</div>";
+        echo "<meta http-equiv='refresh' content='1;url=student_view.php?id=$student_id&tab=docs'>";
+    }
 }
 
 // --- FETCH DATA ---
@@ -114,13 +161,7 @@ if (!empty($student['dob'])) {
     $age = date_diff(date_create($student['dob']), date_create('today'))->y . " Years";
 }
 
-// Stats & Docs
-$att_stats = mysqli_fetch_assoc(mysqli_query($conn, "SELECT COUNT(*) as total, SUM(CASE WHEN status='Present' THEN 1 ELSE 0 END) as present FROM attendance WHERE student_id='$student_id'"));
-$att_perc = ($att_stats['total'] > 0) ? round(($att_stats['present'] / $att_stats['total']) * 100) : 0;
-$att_history = mysqli_query($conn, "SELECT * FROM attendance WHERE student_id = '$student_id' ORDER BY date DESC LIMIT 30");
 $stu_docs = mysqli_query($conn, "SELECT * FROM documents WHERE student_id = '$student_id' ORDER BY doc_id DESC");
-
-// Current Class String
 $curr_class = $student['class_year'];
 ?>
 
@@ -288,7 +329,6 @@ $curr_class = $student['class_year'];
         }
 
         /* --- DOCS --- */
-        /* --- DOCS --- */
         .doc-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -340,6 +380,97 @@ $curr_class = $student['class_year'];
             margin-top: 5px;
             display: flex;
             justify-content: space-between;
+        }
+
+        /* --- CALENDAR --- */
+        .cal-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            background: #F8FAFC;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #E2E8F0;
+        }
+
+        .cal-select {
+            padding: 8px 12px;
+            border: 1px solid #CBD5E1;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #334155;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 6px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .cal-day-name {
+            text-align: center;
+            font-size: 11px;
+            font-weight: 700;
+            color: #94A3B8;
+            padding-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .cal-box {
+            aspect-ratio: 1/1;
+            background: white;
+            border: 1px solid #E2E8F0;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .cal-num {
+            font-size: 13px;
+            font-weight: 700;
+            color: #334155;
+            line-height: 1;
+        }
+
+        .cal-status {
+            font-size: 8px;
+            text-transform: uppercase;
+            font-weight: 700;
+            margin-top: 3px;
+            letter-spacing: 0.5px;
+        }
+
+        .status-present {
+            background: #DCFCE7;
+            border-color: #86EFAC;
+            color: #166534;
+        }
+
+        .status-absent {
+            background: #FEE2E2;
+            border-color: #FCA5A5;
+            color: #991B1B;
+        }
+
+        .status-holiday {
+            background: #E0E7FF;
+            border-color: #A5B4FC;
+            color: #3730A3;
+        }
+
+        .status-empty {
+            background: transparent;
+            border: none;
         }
 
         /* --- MODAL --- */
@@ -528,21 +659,17 @@ $curr_class = $student['class_year'];
 
                         <form method="POST" style="background:#FFF7ED; border:1px solid #FFEDD5; padding:20px; border-radius:12px; margin-top:25px; text-align:left;">
                             <span style="font-size:12px; font-weight:700; color:#C2410C; text-transform:uppercase; margin-bottom:10px; display:block;">Academic Actions</span>
-
                             <select name="program" class="form-select" style="margin-bottom:10px;" required>
                                 <option value="">Select Program</option>
                                 <?php
-                                // Reset pointer just in case
                                 mysqli_data_seek($programs_result, 0);
                                 while ($prog_row = mysqli_fetch_assoc($programs_result)) {
                                     $pName = $prog_row['program_name'];
-                                    // Simple check if current class string contains this program name
                                     $selected = (strpos($curr_class, $pName) !== false) ? 'selected' : '';
                                     echo "<option value='$pName' $selected>$pName</option>";
                                 }
                                 ?>
                             </select>
-
                             <select name="year" class="form-select" style="margin-bottom:10px;">
                                 <option value="">Select Year (Optional)</option>
                                 <option value="1st Year">1st Year</option>
@@ -571,7 +698,6 @@ $curr_class = $student['class_year'];
                             <span class="info-title">Basic Information</span>
                             <button class="btn-edit-profile" onclick="openEditModal()"><i class="fa-solid fa-pen"></i> Edit Details</button>
                         </div>
-
                         <div class="info-grid">
                             <div class="info-item"><label>Full Name</label> <span><?php echo $student['full_name']; ?></span></div>
                             <div class="info-item"><label>Admission No</label> <span><?php echo $student['admission_no']; ?></span></div>
@@ -580,7 +706,6 @@ $curr_class = $student['class_year'];
                             <div class="info-item"><label>Blood Group</label> <span><?php echo !empty($student['blood_group']) ? $student['blood_group'] : '-'; ?></span></div>
                             <div class="info-item"><label>Admission Date</label> <span><?php echo $student['admission_date']; ?></span></div>
                         </div>
-
                         <div class="info-title" style="margin-bottom:15px; border-bottom:1px solid #F1F5F9; padding-bottom:5px;">Family & Contact</div>
                         <div class="info-grid">
                             <div class="info-item"><label>Father's Name</label> <span><?php echo $student['father_name']; ?></span></div>
@@ -590,12 +715,8 @@ $curr_class = $student['class_year'];
                             <div class="info-item"><label>Email</label> <span><?php echo !empty($student['email']) ? $student['email'] : '-'; ?></span></div>
                             <div class="info-item"><label>Address</label> <span><?php echo $student['address']; ?></span></div>
                         </div>
-
                         <?php if (!empty($student['health_issues'])): ?>
-                            <div class="health-box">
-                                <i class="fa-solid fa-notes-medical"></i> <b>Medical Alert:</b><br>
-                                <?php echo nl2br($student['health_issues']); ?>
-                            </div>
+                            <div class="health-box"><i class="fa-solid fa-notes-medical"></i> <b>Medical Alert:</b><br><?php echo nl2br($student['health_issues']); ?></div>
                         <?php endif; ?>
                     </div>
 
@@ -603,19 +724,69 @@ $curr_class = $student['class_year'];
                         <div style="display:flex; gap:20px; margin-bottom:20px;">
                             <div style="flex:1; background:#F8FAFC; padding:20px; border-radius:12px; text-align:center; border:1px solid #E2E8F0;">
                                 <div style="color:#059669; font-size:24px; font-weight:800;"><?php echo $att_perc; ?>%</div>
-                                <div style="font-size:12px; font-weight:600; color:#64748B;">ATTENDANCE RATE</div>
+                                <div style="font-size:11px; font-weight:700; color:#64748B; text-transform:uppercase;">RATE (<?php echo strtoupper(date('M Y', mktime(0, 0, 0, $month, 10, $year))); ?>)</div>
                             </div>
                             <div style="flex:1; background:#F8FAFC; padding:20px; border-radius:12px; text-align:center; border:1px solid #E2E8F0;">
                                 <div style="font-size:24px; font-weight:800; color:#1E293B;"><?php echo $att_stats['present']; ?></div>
-                                <div style="font-size:12px; font-weight:600; color:#64748B;">DAYS PRESENT</div>
+                                <div style="font-size:11px; font-weight:700; color:#64748B; text-transform:uppercase;">DAYS PRESENT (<?php echo strtoupper(date('M Y', mktime(0, 0, 0, $month, 10, $year))); ?>)</div>
                             </div>
                         </div>
-                        <table style="width:100%; font-size:14px; border-collapse:collapse;">
-                            <?php while ($att = mysqli_fetch_assoc($att_history)) {
-                                $col = ($att['status'] == 'Present') ? '#166534' : '#991B1B';
-                                echo "<tr><td style='padding:10px 0; border-bottom:1px solid #F1F5F9;'>" . date('d M Y', strtotime($att['date'])) . "</td><td style='text-align:right; border-bottom:1px solid #F1F5F9; color:$col; font-weight:700;'>" . $att['status'] . "</td></tr>";
-                            } ?>
-                        </table>
+
+                        <form method="GET" class="cal-controls">
+                            <input type="hidden" name="id" value="<?php echo $student_id; ?>">
+                            <input type="hidden" name="tab" value="att">
+                            <select name="month" class="cal-select" onchange="this.form.submit()">
+                                <?php
+                                for ($m = 1; $m <= 12; $m++) {
+                                    $mName = date('F', mktime(0, 0, 0, $m, 10));
+                                    $sel = ($m == $month) ? 'selected' : '';
+                                    echo "<option value='$m' $sel>$mName</option>";
+                                }
+                                ?>
+                            </select>
+                            <select name="year" class="cal-select" onchange="this.form.submit()">
+                                <?php
+                                $currY = date('Y');
+                                for ($y = $currY - 5; $y <= $currY + 5; $y++) {
+                                    $sel = ($y == $year) ? 'selected' : '';
+                                    echo "<option value='$y' $sel>$y</option>";
+                                }
+                                ?>
+                            </select>
+                        </form>
+
+                        <div class="calendar-grid">
+                            <div class="cal-day-name">Sun</div>
+                            <div class="cal-day-name">Mon</div>
+                            <div class="cal-day-name">Tue</div>
+                            <div class="cal-day-name">Wed</div>
+                            <div class="cal-day-name">Thu</div>
+                            <div class="cal-day-name">Fri</div>
+                            <div class="cal-day-name">Sat</div>
+                            <?php
+                            for ($k = 0; $k < $first_day_of_week; $k++) {
+                                echo '<div class="cal-box status-empty"></div>';
+                            }
+                            for ($day = 1; $day <= $days_in_month; $day++) {
+                                $css = "";
+                                $txt = "";
+                                if (isset($attendance_map[$day])) {
+                                    $st = $attendance_map[$day];
+                                    if ($st == 'Present') {
+                                        $css = "status-present";
+                                        $txt = "P";
+                                    } elseif ($st == 'Absent') {
+                                        $css = "status-absent";
+                                        $txt = "A";
+                                    } elseif ($st == 'Holiday') {
+                                        $css = "status-holiday";
+                                        $txt = "H";
+                                    }
+                                }
+                                echo "<div class='cal-box $css'><span class='cal-num'>$day</span><span class='cal-status'>$txt</span></div>";
+                            }
+                            ?>
+                        </div>
                     </div>
 
                     <div id="tab-docs" class="tab-content">
@@ -644,25 +815,15 @@ $curr_class = $student['class_year'];
                                 ?>
                                     <div class="file-card">
                                         <div class="menu-container">
-                                            <div class="menu-btn" onclick="toggleMenu('menu-<?php echo $doc['doc_id']; ?>', event)">
-                                                <i class="fa-solid fa-ellipsis-vertical"></i>
-                                            </div>
+                                            <div class="menu-btn" onclick="toggleMenu('menu-<?php echo $doc['doc_id']; ?>', event)"><i class="fa-solid fa-ellipsis-vertical"></i></div>
                                             <div class="dropdown-menu" id="menu-<?php echo $doc['doc_id']; ?>">
-                                                <span class="dropdown-item" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')">
-                                                    <i class="fa-regular fa-eye"></i> View
-                                                </span>
-                                                <a href="uploads/<?php echo $doc['file_path']; ?>" download class="dropdown-item">
-                                                    <i class="fa-solid fa-download"></i> Download
-                                                </a>
-                                                <a href="student_view.php?id=<?php echo $student_id; ?>&del_doc=<?php echo $doc['doc_id']; ?>" class="dropdown-item del" onclick="return confirm('Delete?')">
-                                                    <i class="fa-solid fa-trash"></i> Delete
-                                                </a>
+                                                <span class="dropdown-item" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')"><i class="fa-regular fa-eye"></i> View</span>
+                                                <span class="dropdown-item" onclick="openRenameModal('<?php echo $doc['doc_id']; ?>', '<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>')"><i class="fa-regular fa-pen-to-square"></i> Rename</span>
+                                                <a href="uploads/<?php echo $doc['file_path']; ?>" download class="dropdown-item"><i class="fa-solid fa-download"></i> Download</a>
+                                                <a href="student_view.php?id=<?php echo $student_id; ?>&del_doc=<?php echo $doc['doc_id']; ?>" class="dropdown-item del" onclick="return confirm('Delete?')"><i class="fa-solid fa-trash"></i> Delete</a>
                                             </div>
                                         </div>
-
-                                        <div class="file-icon-box" style="background:<?php echo $bg; ?>; color:<?php echo $col; ?>;" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')">
-                                            <i class="fa-regular <?php echo $icon; ?>"></i>
-                                        </div>
+                                        <div class="file-icon-box" style="background:<?php echo $bg; ?>; color:<?php echo $col; ?>;" onclick="openPreview('<?php echo htmlspecialchars($doc['title'], ENT_QUOTES); ?>', 'uploads/<?php echo $doc['file_path']; ?>', '<?php echo $ext; ?>')"><i class="fa-regular <?php echo $icon; ?>"></i></div>
                                         <div class="file-name" title="<?php echo $doc['title']; ?>"><?php echo $doc['title']; ?></div>
                                         <div class="file-meta"><?php echo $doc['file_size']; ?></div>
                                     </div>
@@ -693,7 +854,7 @@ $curr_class = $student['class_year'];
 
     <div id="editModal" class="modal-overlay">
         <div class="modal-content">
-            <span class="close-modal" onclick="closeModal()">&times;</span>
+            <span class="close-modal" onclick="document.getElementById('editModal').style.display='none'">&times;</span>
             <h3 style="margin-bottom:20px;">Edit Personal Details</h3>
             <form action="" method="POST">
                 <div class="edit-grid">
@@ -701,21 +862,17 @@ $curr_class = $student['class_year'];
                     <div><label class="form-label">Date of Birth</label><input type="date" name="dob" class="form-input" value="<?php echo $student['dob']; ?>"></div>
                 </div>
                 <div class="edit-grid">
-                    <div><label class="form-label">Gender</label>
-                        <select name="gender" class="form-select">
+                    <div><label class="form-label">Gender</label><select name="gender" class="form-select">
                             <option value="Male" <?php if ($student['gender'] == 'Male') echo 'selected'; ?>>Male</option>
                             <option value="Female" <?php if ($student['gender'] == 'Female') echo 'selected'; ?>>Female</option>
-                        </select>
-                    </div>
-                    <div><label class="form-label">Blood Group</label>
-                        <select name="blood_group" class="form-select">
+                        </select></div>
+                    <div><label class="form-label">Blood Group</label><select name="blood_group" class="form-select">
                             <option value="<?php echo $student['blood_group']; ?>" selected><?php echo $student['blood_group']; ?></option>
                             <option value="A+">A+</option>
                             <option value="O+">O+</option>
                             <option value="B+">B+</option>
                             <option value="AB+">AB+</option>
-                        </select>
-                    </div>
+                        </select></div>
                 </div>
                 <div class="edit-grid">
                     <div><label class="form-label">Father's Name</label><input type="text" name="father_name" class="form-input" value="<?php echo htmlspecialchars($student['father_name']); ?>"></div>
@@ -728,8 +885,22 @@ $curr_class = $student['class_year'];
                 <div style="margin-bottom:15px;"><label class="form-label">Email</label><input type="email" name="email" class="form-input" value="<?php echo $student['email']; ?>"></div>
                 <div style="margin-bottom:15px;"><label class="form-label">Address</label><input type="text" name="address" class="form-input" value="<?php echo htmlspecialchars($student['address']); ?>"></div>
                 <div style="margin-bottom:15px;"><label class="form-label">Health Issues</label><textarea name="health_issues" class="form-input" rows="2"><?php echo htmlspecialchars($student['health_issues']); ?></textarea></div>
-
                 <button type="submit" name="update_personal_info" class="btn-save-modal">Save Changes</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="renameModal" class="modal-overlay">
+        <div class="modal-content" style="width:400px; min-height:auto;">
+            <span onclick="document.getElementById('renameModal').style.display='none'" class="close-modal">&times;</span>
+            <h3 style="margin-bottom:15px;">Rename Document</h3>
+            <form method="POST">
+                <input type="hidden" name="rename_doc_id" id="rename_doc_id">
+                <div style="margin-bottom:15px;">
+                    <label class="form-label">New File Name</label>
+                    <input type="text" name="rename_doc_title" id="rename_doc_title" class="form-input" required>
+                </div>
+                <button type="submit" name="rename_document" class="btn-save-modal">Update Name</button>
             </form>
         </div>
     </div>
@@ -753,20 +924,18 @@ $curr_class = $student['class_year'];
             document.getElementById('editModal').style.display = 'flex';
         }
 
-        function closeModal() {
-            document.getElementById('editModal').style.display = 'none';
+        function openRenameModal(id, title) {
+            document.getElementById('renameModal').style.display = 'flex';
+            document.getElementById('rename_doc_id').value = id;
+            document.getElementById('rename_doc_title').value = title;
         }
-
 
         function toggleMenu(id, event) {
             event.stopPropagation();
             var menu = document.getElementById(id);
             var isVisible = menu.classList.contains('show');
-
-            // Hide all other menus
             var allMenus = document.querySelectorAll('.dropdown-menu');
             allMenus.forEach(m => m.classList.remove('show'));
-
             if (!isVisible) {
                 menu.classList.add('show');
             }
@@ -778,9 +947,7 @@ $curr_class = $student['class_year'];
             document.getElementById('downloadBtn').href = path;
             const container = document.getElementById('previewBody');
             container.innerHTML = '';
-
             var extLc = ext.toLowerCase();
-
             if (['jpg', 'jpeg', 'png', 'gif'].includes(extLc)) {
                 container.innerHTML = `<img src="${path}" style="max-width:100%; max-height:100%; object-fit:contain;">`;
             } else if (extLc === 'pdf') {
@@ -794,6 +961,14 @@ $curr_class = $student['class_year'];
             } else {
                 container.innerHTML = `<div style="text-align:center; color:#64748B;">No preview available for this file type.<br>Please download to view.</div>`;
             }
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const tab = urlParams.get('tab');
+        if (tab === 'att') {
+            document.querySelector('[onclick*="tab-att"]').click();
+        } else if (tab === 'docs') {
+            document.querySelector('[onclick*="tab-docs"]').click();
         }
 
         window.onclick = function(e) {

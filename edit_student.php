@@ -2,13 +2,13 @@
 session_start();
 include 'db_conn.php';
 
-// 1. லாகின் செக்
+// 1. LOGIN CHECK
 if (!isset($_SESSION['user_id']) && !isset($_SESSION['username'])) {
     header("Location: login.php");
     exit();
 }
 
-// 2. ID உள்ளதா என பார்த்தல்
+// 2. CHECK ID
 if (!isset($_GET['id'])) {
     header("Location: students.php");
     exit();
@@ -17,7 +17,7 @@ if (!isset($_GET['id'])) {
 $id = mysqli_real_escape_string($conn, $_GET['id']);
 $message = "";
 
-// 3. மாணவர் தகவல்களை எடுத்தல்
+// 3. FETCH STUDENT DETAILS
 $sql = "SELECT * FROM students WHERE student_id = '$id'";
 $result = mysqli_query($conn, $sql);
 $student = mysqli_fetch_assoc($result);
@@ -27,7 +27,46 @@ if (!$student) {
     exit();
 }
 
-// 4. அப்டேட் செய்தல்
+// ---------------------------------------------------------
+// [FIX] PRE-PROCESS: Extract Program & Year for Dropdowns
+// ---------------------------------------------------------
+
+// A. Fetch all programs into an array
+$all_programs = [];
+$p_query = mysqli_query($conn, "SELECT program_name FROM programs");
+while ($p = mysqli_fetch_assoc($p_query)) {
+    $all_programs[] = $p['program_name'];
+}
+
+// B. Sort by Length (Descending) to fix "Al-Alim" vs "Al-Alimah" matching issue
+$extraction_list = $all_programs;
+usort($extraction_list, function ($a, $b) {
+    return strlen($b) - strlen($a);
+});
+
+// C. Extract from current database value
+$db_class_year = $student['class_year'];
+$current_prog = "";
+$current_year = "";
+
+// Try to find the program in the string
+foreach ($extraction_list as $p_name) {
+    if (stripos($db_class_year, $p_name) !== false) {
+        $current_prog = $p_name;
+        // Remove program name to get the year (e.g., "1st Year")
+        $current_year = trim(str_ireplace($p_name, '', $db_class_year));
+        break;
+    }
+}
+
+// Handle edge case: "Graduated" might be stored as the full string
+if ($db_class_year == "Graduated") {
+    $current_year = "Graduated";
+}
+// ---------------------------------------------------------
+
+
+// 4. UPDATE LOGIC
 if (isset($_POST['update_student'])) {
     $full_name = mysqli_real_escape_string($conn, $_POST['full_name']);
     $admission_no = mysqli_real_escape_string($conn, $_POST['admission_no']);
@@ -35,18 +74,23 @@ if (isset($_POST['update_student'])) {
     // Combine Program + Year
     $prog = mysqli_real_escape_string($conn, $_POST['program']);
     $yr = mysqli_real_escape_string($conn, $_POST['year']);
+
+    // Logic: If year is empty, just use Program Name
     $class_year = (!empty($yr)) ? "$prog $yr" : $prog;
-    if ($yr == "Graduated" || $prog == "Graduated") {
+
+    // Special handling if they select "Graduated"
+    if ($yr == "Graduated") {
         $status = "Graduated";
+    } else {
+        $status = $_POST['status'];
     }
+
     $father_name = mysqli_real_escape_string($conn, $_POST['father_name']);
     $phone = mysqli_real_escape_string($conn, $_POST['phone']);
     $address = mysqli_real_escape_string($conn, $_POST['address']);
-    $status = $_POST['status'];
 
-    // போட்டோ மாற்றம்
+    // Photo Upload
     $photo_name = $student['photo'];
-
     if (!empty($_FILES['photo']['name'])) {
         $new_photo = $_FILES['photo']['name'];
         $target = "uploads/" . basename($new_photo);
@@ -70,6 +114,15 @@ if (isset($_POST['update_student'])) {
         $message = "<div class='alert success'>Student Details Updated Successfully!</div>";
         // Refresh Data
         $student = mysqli_fetch_assoc(mysqli_query($conn, "SELECT * FROM students WHERE student_id = '$id'"));
+        // Re-run extraction to show new values immediately
+        $db_class_year = $student['class_year'];
+        foreach ($extraction_list as $p_name) {
+            if (stripos($db_class_year, $p_name) !== false) {
+                $current_prog = $p_name;
+                $current_year = trim(str_ireplace($p_name, '', $db_class_year));
+                break;
+            }
+        }
     } else {
         $message = "<div class='alert error'>Error: " . mysqli_error($conn) . "</div>";
     }
@@ -127,12 +180,13 @@ if (isset($_POST['update_student'])) {
         }
 
         .form-group input:focus {
-            border-color: #2563EB;
+            border-color: #ED8936;
+            /* Orange Theme */
             background: white;
         }
 
         .btn-update {
-            background: #2563EB;
+            background: #ED8936;
             color: white;
             padding: 12px;
             border-radius: 8px;
@@ -145,7 +199,7 @@ if (isset($_POST['update_student'])) {
         }
 
         .btn-update:hover {
-            background: #1D4ED8;
+            background: #D67625;
         }
 
         .current-photo {
@@ -209,16 +263,14 @@ if (isset($_POST['update_student'])) {
                     <div class="form-row">
                         <div class="form-group">
                             <label>Program</label>
-                            <?php
-                            $prog_res = mysqli_query($conn, "SELECT program_name FROM programs ORDER BY program_name ASC");
-                            ?>
                             <select name="program" required>
                                 <option value="">Select Program</option>
                                 <?php
-                                while ($p = mysqli_fetch_assoc($prog_res)) {
-                                    $pName = $p['program_name'];
-                                    // Check if current class_year contains this program name
-                                    $selected = (strpos($student['class_year'], $pName) !== false) ? 'selected' : '';
+                                // Use the $all_programs array we fetched earlier (sorting alphabetical for display is usually better for users)
+                                sort($all_programs);
+                                foreach ($all_programs as $pName) {
+                                    // Compare Exact String
+                                    $selected = ($pName == $current_prog) ? 'selected' : '';
                                     echo "<option value='" . htmlspecialchars($pName) . "' $selected>" . htmlspecialchars($pName) . "</option>";
                                 }
                                 ?>
@@ -240,8 +292,8 @@ if (isset($_POST['update_student'])) {
                                     "Graduated"
                                 ];
                                 foreach ($years as $y) {
-                                    // Check if current class_year contains this year string
-                                    $sel = (strpos($student['class_year'], $y) !== false) ? 'selected' : '';
+                                    // Compare Exact String
+                                    $sel = ($y == $current_year) ? 'selected' : '';
                                     echo "<option value='$y' $sel>$y</option>";
                                 }
                                 ?>

@@ -8,13 +8,29 @@ if (!isset($_SESSION['user_id']) && !isset($_SESSION['username'])) {
     exit();
 }
 
+// [NEW] Fetch all programs dynamically
+$program_list = [];
+$p_query = mysqli_query($conn, "SELECT program_name FROM programs");
+if ($p_query) {
+    while ($p = mysqli_fetch_assoc($p_query)) {
+        $program_list[] = $p['program_name'];
+    }
+}
+
+// [CRITICAL] Sort programs by length (Longest first) for correct display logic
+usort($program_list, function ($a, $b) {
+    return strlen($b) - strlen($a);
+});
+
 // 2. FILTER LOGIC
 $where_clauses = [];
 
-// Program Filter
+// [FIXED] Program Filter - Stricter Matching
 if (isset($_GET['program']) && $_GET['program'] != 'All') {
     $prog = mysqli_real_escape_string($conn, $_GET['program']);
-    $where_clauses[] = "class_year LIKE '%$prog%'";
+    // Check for Exact Match OR Match followed by a space
+    // This prevents "Al-Alim" from matching "Al-Alimah"
+    $where_clauses[] = "(class_year = '$prog' OR class_year LIKE '$prog %')";
 }
 
 // Year Filter
@@ -131,10 +147,9 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
             color: #9CA3AF;
         }
 
-        /* --- ADD BUTTON (ORANGE THEME) --- */
+        /* --- ADD BUTTON --- */
         .btn-add {
             background-color: #ED8936;
-            /* Brand Orange */
             color: white;
             padding: 10px 20px;
             border-radius: 8px;
@@ -150,7 +165,6 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
 
         .btn-add:hover {
             background-color: #D67625;
-            /* Darker Orange */
             transform: translateY(-1px);
         }
 
@@ -191,9 +205,6 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
             background-color: #FFF7ED;
         }
 
-        /* Light Orange Hover */
-
-        /* Student Profile Info */
         .profile-cell {
             display: flex;
             align-items: center;
@@ -233,7 +244,6 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
             color: #6B7280;
         }
 
-        /* Status Badges */
         .badge {
             padding: 4px 10px;
             border-radius: 20px;
@@ -257,7 +267,6 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
             color: #3730A3;
         }
 
-        /* Actions */
         .action-btns {
             display: flex;
             gap: 10px;
@@ -327,7 +336,7 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
                                 while ($pf = mysqli_fetch_assoc($prog_filter_result)) {
                                     $pName = $pf['program_name'];
                                     $sel = ($selected_prog == $pName) ? 'selected' : '';
-                                    echo "<option value='$pName' $sel>$pName</option>";
+                                    echo "<option value='" . htmlspecialchars($pName) . "' $sel>" . htmlspecialchars($pName) . "</option>";
                                 }
                             }
                             ?>
@@ -364,7 +373,7 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
                         <tr>
                             <th style="width: 25%;">Student Profile</th>
                             <th style="width: 15%;">Program</th>
-                            <th style="width: 15%;">Class / Year</th>
+                            <th style="width: 15%;">Year</th>
                             <th style="width: 15%;">Contact</th>
                             <th style="width: 10%;">Status</th>
                             <th style="width: 20%; text-align:right;">Actions</th>
@@ -388,11 +397,25 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
                                 if ($row['status'] == 'Inactive') $status_badge = "badge-inactive";
                                 if ($row['status'] == 'Graduated') $status_badge = "badge-graduated";
 
-                                // Program Display
-                                $prog_display = "General";
-                                if (strpos($row['class_year'], 'Hifz') !== false) $prog_display = "Al-Hafiz";
-                                elseif (strpos($row['class_year'], 'Alim') !== false) $prog_display = "Al-Alim";
-                                elseif (strpos($row['class_year'], 'Alimah') !== false) $prog_display = "Al-Alimah";
+                                // --- Dynamic Program & Year Logic ---
+                                $db_class_year = $row['class_year'];
+                                $prog_display = "General"; // Default
+                                $year_only = $db_class_year; // Default to full string if no match found
+
+                                // Check against the sorted program list (Longest names first)
+                                foreach ($program_list as $p_name) {
+                                    // Case-Insensitive check
+                                    if (stripos($db_class_year, $p_name) !== false) {
+                                        $prog_display = $p_name;
+                                        // Remove the program name from the string to get just the Year
+                                        $year_only = trim(str_ireplace($p_name, '', $db_class_year));
+                                        break;
+                                    }
+                                }
+
+                                if (empty($year_only)) {
+                                    $year_only = "-";
+                                }
 
                                 echo "<tr>";
 
@@ -411,7 +434,7 @@ $search_val = isset($_GET['search']) ? $_GET['search'] : '';
                                 echo "<td><span style='font-weight:600; color:#4B5563;'>$prog_display</span></td>";
 
                                 // 3. Year
-                                echo "<td><span style='color:#6B7280; background:#F9FAFB; padding:4px 8px; border:1px solid #E5E7EB; border-radius:6px; font-size:12px; font-weight:500;'>" . $row['class_year'] . "</span></td>";
+                                echo "<td><span style='color:#6B7280; background:#F9FAFB; padding:4px 8px; border:1px solid #E5E7EB; border-radius:6px; font-size:12px; font-weight:500;'>" . $year_only . "</span></td>";
 
                                 // 4. Contact
                                 echo "<td>

@@ -70,6 +70,8 @@ if (isset($_POST['login_btn'])) {
             border: none !important;
             /* Remove Border Line */
             object-fit: contain;
+            background-color: transparent !important;
+            box-shadow: none !important;
         }
 
         .card-header h1 {
