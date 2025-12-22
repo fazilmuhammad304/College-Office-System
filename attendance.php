@@ -48,6 +48,7 @@ if (isset($_POST['save_attendance'])) {
 // 3. FILTER LOGIC & QUERY BUILDING
 $filter_program = isset($_GET['program']) ? $_GET['program'] : 'All';
 $filter_year    = isset($_GET['year']) ? $_GET['year'] : 'All';
+$filter_status  = isset($_GET['status_filter']) ? $_GET['status_filter'] : 'All'; // NEW: Status Filter
 $filter_student = isset($_GET['student']) ? $_GET['student'] : '';
 $selected_date  = isset($_GET['date']) ? $_GET['date'] : date('Y-m-d');
 
@@ -66,6 +67,13 @@ if ($filter_program != '' && $filter_program != 'All') {
 if ($filter_year != '' && $filter_year != 'All') {
     $year_safe = mysqli_real_escape_string($conn, $filter_year);
     $filter_conditions .= " AND s.class_year LIKE '%$year_safe%'";
+}
+
+// NEW: Filter by Attendance Status (Present / Absent)
+if ($filter_status != '' && $filter_status != 'All') {
+    $status_safe = mysqli_real_escape_string($conn, $filter_status);
+    // Subquery to find students with the specific status on the selected date
+    $filter_conditions .= " AND s.student_id IN (SELECT student_id FROM attendance WHERE date='$selected_date' AND status='$status_safe')";
 }
 
 // Filter by Student Name/ID (Search Bar)
@@ -500,6 +508,17 @@ $btn_text = $is_existing ? "Update Attendance" : "Save Attendance";
                             <option value="Final Year" <?php if ($filter_year == 'Final Year') echo 'selected'; ?>>Final Year</option>
                         </select>
                     </div>
+
+                    <div class="filter-group">
+                        <label>Status</label>
+                        <select name="status_filter" class="filter-input">
+                            <option value="All" <?php if ($filter_status == 'All') echo 'selected'; ?>>All Status</option>
+                            <option value="Present" <?php if ($filter_status == 'Present') echo 'selected'; ?>>Present</option>
+                            <option value="Absent" <?php if ($filter_status == 'Absent') echo 'selected'; ?>>Absent</option>
+                            <option value="Holiday" <?php if ($filter_status == 'Holiday') echo 'selected'; ?>>Holiday</option>
+                        </select>
+                    </div>
+
                     <div class="filter-group">
                         <label>Student Search</label>
                         <input type="text" name="student" class="filter-input" placeholder="Name or ID..." value="<?php echo htmlspecialchars($filter_student); ?>">

@@ -11,64 +11,44 @@ if (!isset($_SESSION['user_id']) && !isset($_SESSION['username'])) {
     exit();
 }
 
-// ---------------------------------------------------------
-// 1. DATA COUNTING
-// ---------------------------------------------------------
+// 2. ALERT LOGIC (Check if today has a note)
+$today_date = date('Y-m-d');
+$alert_sql = "SELECT * FROM dashboard_reminders WHERE reminder_date = '$today_date'";
+$alert_res = mysqli_query($conn, $alert_sql);
+$todays_alerts = [];
+while ($row = mysqli_fetch_assoc($alert_res)) {
+    $todays_alerts[] = $row;
+}
 
+// 3. STATS & DATA COUNTS
 // A. Total Students
 $student_query = "SELECT COUNT(*) as total FROM students";
-$student_result = mysqli_query($conn, $student_query);
-$student_data = mysqli_fetch_assoc($student_result);
+$student_data = mysqli_fetch_assoc(mysqli_query($conn, $student_query));
 $total_students = isset($student_data['total']) ? intval($student_data['total']) : 0;
 
-// B. Attendance Today (FIXED LOGIC)
-$today = date('Y-m-d');
-
-// திருத்தம்: DISTINCT சேர்ப்பதன் மூலம் ஒரு மாணவரை ஒரு முறை மட்டுமே கணக்கிடும்.
-$att_query = "SELECT COUNT(DISTINCT student_id) as present_count FROM attendance WHERE date = '$today' AND status = 'Present'";
-
-$att_result = mysqli_query($conn, $att_query);
-$att_data = mysqli_fetch_assoc($att_result);
+// B. Attendance Today
+$att_query = "SELECT COUNT(DISTINCT student_id) as present_count FROM attendance WHERE date = '$today_date' AND status = 'Present'";
+$att_data = mysqli_fetch_assoc(mysqli_query($conn, $att_query));
 $present_today = isset($att_data['present_count']) ? intval($att_data['present_count']) : 0;
 
 // C. Attendance Percentage
 $active_students_query = "SELECT COUNT(*) as total FROM students WHERE status='Active'";
 $active_data = mysqli_fetch_assoc(mysqli_query($conn, $active_students_query));
 $active_count = $active_data['total'];
-
-// கணக்கீடு (Calculation)
-if ($active_count > 0) {
-    $att_percentage = round(($present_today / $active_count) * 100);
-} else {
-    $att_percentage = 0;
-}
-
-// பாதுகாப்பு: 100%க்கு மேல் போகாமல் தடுத்தல்
-if ($att_percentage > 100) {
-    $att_percentage = 100;
-}
+$att_percentage = ($active_count > 0) ? round(($present_today / $active_count) * 100) : 0;
+if ($att_percentage > 100) $att_percentage = 100;
 
 // D. Total Documents
 $doc_query = "SELECT COUNT(*) as total FROM documents";
 $doc_data = mysqli_fetch_assoc(mysqli_query($conn, $doc_query));
 $total_docs = isset($doc_data['total']) ? intval($doc_data['total']) : 0;
 
-// ---------------------------------------------------------
-// E. DYNAMIC PROGRAMS COUNT
-// ---------------------------------------------------------
+// E. Programs
 $prog_query = "SELECT COUNT(*) as total FROM programs";
-$prog_result = mysqli_query($conn, $prog_query);
+$prog_data = mysqli_fetch_assoc(mysqli_query($conn, $prog_query));
+$total_programs = isset($prog_data['total']) ? intval($prog_data['total']) : 0;
 
-if ($prog_result) {
-    $prog_data = mysqli_fetch_assoc($prog_result);
-    $total_programs = $prog_data['total'];
-} else {
-    $total_programs = 0;
-}
-
-// ---------------------------------------------------------
-// 2. RECENT ACTIVITIES
-// ---------------------------------------------------------
+// 4. RECENT ACTIVITIES
 $recent_students = mysqli_query($conn, "SELECT full_name, class_year, created_at FROM students WHERE created_at >= NOW() - INTERVAL 1 DAY ORDER BY created_at DESC");
 $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM documents WHERE uploaded_at >= NOW() - INTERVAL 1 DAY ORDER BY uploaded_at DESC");
 ?>
@@ -97,7 +77,7 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
             text-decoration: none;
             color: inherit;
             display: block;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: transform 0.2s;
         }
 
         .card-link:hover {
@@ -152,6 +132,7 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
             padding: 25px;
             border: 1px solid #F3F4F6;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+            margin-top: 30px;
         }
 
         .section-title {
@@ -206,7 +187,6 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
             font-weight: 500;
         }
 
-        /* Colors */
         .bg-blue {
             background: #E0E7FF;
             color: #4338CA;
@@ -225,6 +205,94 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
         .bg-purple {
             background: #F3E8FF;
             color: #7E22CE;
+        }
+
+        /* SHORTCUT BUTTON STYLE */
+        .shortcut-bar {
+            background: white;
+            padding: 20px;
+            border-radius: 16px;
+            border: 1px solid #F3F4F6;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .sc-btn {
+            background: #ED8936;
+            color: white;
+            padding: 12px 25px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            transition: 0.2s;
+            box-shadow: 0 4px 10px rgba(237, 137, 54, 0.2);
+        }
+
+        .sc-btn:hover {
+            background: #d9650c;
+            transform: translateY(-2px);
+        }
+
+        /* ALERT POPUP STYLES */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(3px);
+        }
+
+        .modal-box {
+            background: white;
+            width: 400px;
+            padding: 25px;
+            border-radius: 12px;
+            position: relative;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+            animation: slideDown 0.3s;
+        }
+
+        .alert-active {
+            display: flex !important;
+        }
+
+        .alert-header {
+            background: #FEF2F2;
+            color: #991B1B;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .alert-title {
+            font-weight: 700;
+            font-size: 16px;
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
         }
     </style>
 </head>
@@ -247,7 +315,6 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
             </header>
 
             <div class="cards-grid">
-
                 <a href="students.php" class="card-link">
                     <div class="card">
                         <div class="card-icon bg-blue"><i class="fa-solid fa-user-graduate"></i></div>
@@ -258,20 +325,16 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
                         </div>
                     </div>
                 </a>
-
                 <a href="programs.php" class="card-link">
                     <div class="card">
                         <div class="card-icon bg-orange"><i class="fa-solid fa-book-quran"></i></div>
                         <div class="card-info">
                             <h3><?php echo $total_programs; ?></h3>
                             <span>Programs</span>
-                            <span style="font-size:11px; color:#6B7280; margin-top:5px; display:block;">
-                                Manage Courses <i class="fa-solid fa-arrow-right"></i>
-                            </span>
+                            <span style="font-size:11px; color:#6B7280; margin-top:5px; display:block;">Manage Courses <i class="fa-solid fa-arrow-right"></i></span>
                         </div>
                     </div>
                 </a>
-
                 <a href="attendance.php" class="card-link">
                     <div class="card">
                         <div class="card-icon bg-green"><i class="fa-solid fa-calendar-check"></i></div>
@@ -282,7 +345,6 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
                         </div>
                     </div>
                 </a>
-
                 <a href="documents.php" class="card-link">
                     <div class="card">
                         <div class="card-icon bg-purple"><i class="fa-solid fa-folder-open"></i></div>
@@ -293,7 +355,16 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
                         </div>
                     </div>
                 </a>
+            </div>
 
+            <div class="shortcut-bar">
+                <div>
+                    <h3 style="margin:0; font-size:16px;">Quick Actions</h3>
+                    <p style="margin:5px 0 0; color:#6B7280; font-size:13px;">Manage students and admissions efficiently.</p>
+                </div>
+                <a href="add_student.php" class="sc-btn">
+                    <i class="fa-solid fa-user-plus"></i> Add Student Box
+                </a>
             </div>
 
             <div class="activity-section">
@@ -335,6 +406,33 @@ $recent_docs = mysqli_query($conn, "SELECT title, category, uploaded_at FROM doc
 
         </main>
     </div>
+
+    <?php if (!empty($todays_alerts)): ?>
+        <div class="modal-overlay alert-active" id="alertOverlay">
+            <div class="modal-box">
+                <div class="alert-header">
+                    <i class="fa-solid fa-bell fa-bounce"></i>
+                    <span class="alert-title">Reminder for Today!</span>
+                </div>
+                <div style="margin-bottom:20px;">
+                    <?php foreach ($todays_alerts as $alert): ?>
+                        <p style="font-weight:600; color:#374151; margin-bottom:5px;">Note:</p>
+                        <p style="background:#F9FAFB; padding:10px; border-radius:6px; color:#4B5563; font-size:14px; margin-bottom:15px;">
+                            <?php echo htmlspecialchars($alert['note_text']); ?>
+                        </p>
+                        <?php if ($alert['document_path']): ?>
+                            <a href="<?php echo $alert['document_path']; ?>" download style="display:block; text-align:center; background:#EFF6FF; color:#2563EB; padding:8px; border-radius:6px; text-decoration:none; font-weight:600; font-size:13px;">
+                                <i class="fa-solid fa-download"></i> Download Attached Document
+                            </a>
+                        <?php endif; ?>
+                        <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
+                    <?php endforeach; ?>
+                </div>
+                <button onclick="document.getElementById('alertOverlay').style.display='none'" style="width:100%; padding:10px; border:1px solid #D1D5DB; background:white; border-radius:6px; cursor:pointer;">Close Alert</button>
+            </div>
+        </div>
+    <?php endif; ?>
+
 </body>
 
 </html>

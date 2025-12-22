@@ -1,7 +1,9 @@
 <aside class="sidebar">
     <div class="sidebar-header">
         <div class="logo-text">
-            <i class="fa-solid fa-graduation-cap"></i> College<span>Office</span>
+            <img src="logo.png" alt="FMAC Logo" style="height: 35px; width: auto; margin-right: 8px; vertical-align: middle;">
+
+            FMAC <span>Central</span>
         </div>
     </div>
 
@@ -12,6 +14,11 @@
                                                         echo 'active';
                                                     } ?>">
             <i class="fa-solid fa-gauge-high"></i> Dashboard
+        </a>
+        <a href="calendar.php" class="menu-item <?php if ($page == 'calendar') {
+                                                    echo 'active';
+                                                } ?>">
+            <i class="fa-solid fa-calendar-days"></i> Calendar
         </a>
 
         <p class="menu-label">Directory</p>
